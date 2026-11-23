@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>capcap 滚动截图验收</title>
+<style>
+  * { box-sizing: border-box }
+  html, body { margin: 0; height: 100%; overflow: hidden }
+  body { font: 15px -apple-system, BlinkMacSystemFont, sans-serif; color: #223044; background: #e7ebf0 }
+  #viewport { position: absolute; left: 24px; top: 24px; width: 800px; height: 550px; overflow: hidden; background: white }
+  #header { position: absolute; z-index: 2; inset: 0 0 auto; height: 76px; padding: 16px 24px; background: #173757; color: white; border-bottom: 4px solid #ffc857 }
+  #header strong { font-size: 21px; display: block; letter-spacing: 1px }
+  #header small { color: #d5e5f4 }
+  #scroller { position: absolute; inset: 76px 0 0; overflow: auto; scrollbar-width: none; scroll-behavior: auto; overscroll-behavior: contain }
+  #scroller::-webkit-scrollbar { display: none }
+  .row { height: 96px; padding: 12px 24px; border-bottom: 1px solid #cad6e2; position: relative; overflow: hidden }
+  .row:nth-child(even) { background: #f0f5fa }
+  .row strong { font-size: 18px; display: block; margin-bottom: 5px }
+  .row p { margin: 0; line-height: 23px; color: #526477; white-space: nowrap }
+  .marks { display: flex; gap: 5px; position: absolute; bottom: 6px; left: 24px; right: 24px; height: 4px }
+  .marks span { display: block; flex: 1 }
+  #footer { display: none; position: absolute; z-index: 2; inset: auto 0 0; height: 76px; padding: 14px 24px; background: #ffe5bf; border-top: 4px solid #a8541b; color: #733900 }
+  #footer span { display: inline-block; padding: 10px 14px; width: 88%; border: 1px solid #b27844; border-radius: 8px; background: white }
+  body.manual #header { display: none }
+  body.manual #scroller { inset: 0 }
+  body.chat #scroller { bottom: 76px }
+  body.chat #footer { display: block }
+  body.chat .row { height: 82px; padding-left: 74px }
+  body.chat .row::before { content: attr(data-number); position: absolute; left: 18px; top: 20px; width: 42px; height: 42px; border-radius: 12px; background: #c5dbec; color: #173757; display: grid; place-items: center; font-weight: bold }
+  aside { position: absolute; left: 848px; top: 24px; width: 330px; font-size: 14px }
+  h1 { font-size: 19px; margin: 0 0 12px }
+  nav { display: flex; gap: 12px; margin: 14px 0 }
+  a { color: #175999 }
+  button { font: inherit; cursor: pointer; padding: 8px 10px; margin: 0 5px 12px 0 }
+  #result { background: white; padding: 12px; white-space: pre-wrap; line-height: 1.7; font-variant-numeric: tabular-nums }
+  .note { line-height: 1.7; color: #526477 }
+</style>
+<div id="viewport" aria-label="800乘550截图目标">
+  <header id="header"><strong id="heading"></strong><small>固定标题 · 正文独立滚动 · 只在长图顶部保留一次</small></header>
+  <main id="scroller" tabindex="0" aria-label="可滚动正文"><div id="document"></div></main>
+  <footer id="footer"><span>固定输入栏 · 应只在最终长图底部保留一次</span>　发送</footer>
+</div>
+<aside>
+  <h1>capcap 滚动截图验收</h1>
+  <div class="note">本次验收自建 fixture<br>截图目标固定为 800 × 550 CSS 像素<br>只截左侧白色视口，排除右侧统计</div>
+  <nav><a href="?scene=sticky">吸顶网页</a><a href="?scene=manual">手动滚动</a><a href="?scene=chat">固定聊天输入栏</a></nav>
+  <button id="reset">回到顶部并清零</button><button id="export">导出 JSON</button>
+  <div id="result" role="status"></div>
+  <p class="note">自动：在 capcap 中选择自动滚动<br>手动：小步向下，向上回退，再继续向下<br>每行编号应连续，接缝不应出现黑白线<br>统计仅记录真实浏览器事件和渲染帧</p>
+</aside>
+<script>
+  const requested = new URLSearchParams(location.search).get('scene');
+  const scene = ['sticky', 'manual', 'chat'].includes(requested) ? requested : 'sticky';
+  document.body.className = scene;
+  document.querySelector('#heading').textContent = scene === 'chat' ? '离线聊天记录 · 001—060' : '滚动截图验收文章 · 001—060';
+  const scroller = document.querySelector('#scroller');
+  const viewport = document.querySelector('#viewport');
+  const content = document.querySelector('#document');
+  for (let number = 1; number <= 60; number++) {
+    const row = document.createElement('section');
+    row.className = 'row';
+    row.dataset.number = String(number).padStart(3, '0');
+    const token = ((number * 2654435761) >>> 0).toString(16).toUpperCase().padStart(8, '0');
+    row.innerHTML = `<strong>第 ${row.dataset.number} 条 · ${scene === 'chat' ? '离线消息' : '正文段落'} · ${token}</strong><p>编号 ${row.dataset.number}：检查文字连续、色条对齐与截图边缘，没有遗漏或重复</p><div class="marks"></div>`;
+    const marks = row.querySelector('.marks');
+    // 各列都保留独立细节，避免纯色或周期性列表让匹配产生歧义
+    for (let column = 0; column < 24; column++) {
+      const mark = document.createElement('span');
+      const seed = (Math.imul(number, 104729) ^ Math.imul(column + 1, 13007)) >>> 0;
+      mark.style.background = `hsl(${seed % 360} 52% ${30 + ((seed >>> 8) % 35)}%)`;
+      mark.style.flexGrow = String(1 + seed % 5);
+      marks.append(mark);
+    }
+    content.append(row);
+  }
+
+  let started = performance.now();
+  let initialTop = 0;
+  let lastPaintedTop = 0;
+  let scrolls = [];
+  let wheels = [];
+  let paintedChanges = [];
+  const rounded = value => Math.round(value * 1000) / 1000;
+  const time = () => rounded(performance.now() - started);
+  const median = values => {
+    if (!values.length) return null;
+    const sorted = [...values].sort((a, b) => a - b);
+    const center = Math.floor(sorted.length / 2);
+    return rounded(sorted.length % 2 ? sorted[center] : (sorted[center - 1] + sorted[center]) / 2);
+  };
+  const snapshot = () => {
+    const rect = viewport.getBoundingClientRect();
+    const intervals = paintedChanges.slice(1).map((event, i) => rounded(event.t - paintedChanges[i].t));
+    const deltas = paintedChanges.map(event => Math.abs(event.delta));
+    return {
+      source: 'capcap PR #232 本次验收自建 fixture',
+      scene, timestamp: new Date().toISOString(), userAgent: navigator.userAgent,
+      devicePixelRatio, elapsedMs: time(),
+      viewport: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+      summary: {
+        initialTop, finalTop: scroller.scrollTop, maximumTop: scroller.scrollHeight - scroller.clientHeight,
+        scrollEvents: scrolls.length, wheelEvents: wheels.length, changedPaintFrames: paintedChanges.length,
+        medianPaintIntervalMs: median(intervals), maxPaintIntervalMs: intervals.length ? Math.max(...intervals) : null,
+        medianPaintDeltaPx: median(deltas), maxPaintDeltaPx: deltas.length ? Math.max(...deltas) : null,
+        backwardPaintFrames: paintedChanges.filter(event => event.delta < 0).length
+      },
+      scrolls: [...scrolls], wheels: [...wheels], paintedChanges: [...paintedChanges]
+    };
+  };
+  scroller.addEventListener('scroll', () => {
+    if (scrolls.length < 20000) scrolls.push({ t: time(), top: rounded(scroller.scrollTop) });
+  }, { passive: true });
+  scroller.addEventListener('wheel', event => {
+    if (wheels.length < 20000) wheels.push({ t: time(), deltaY: rounded(event.deltaY), deltaMode: event.deltaMode, trusted: event.isTrusted });
+  }, { passive: true });
+  const observePaint = () => {
+    const top = scroller.scrollTop;
+    if (top !== lastPaintedTop && paintedChanges.length < 20000) {
+      paintedChanges.push({ t: time(), top: rounded(top), delta: rounded(top - lastPaintedTop) });
+      lastPaintedTop = top;
+    }
+    requestAnimationFrame(observePaint);
+  };
+  requestAnimationFrame(observePaint);
+  const renderSummary = () => {
+    const stats = snapshot().summary;
+    const val = value => value === null ? '—' : value;
+    document.querySelector('#result').textContent = `场景：${scene}\n位置：${rounded(stats.finalTop)} / ${stats.maximumTop} px\n滚轮事件：${stats.wheelEvents}\n滚动事件：${stats.scrollEvents}\n变化渲染帧：${stats.changedPaintFrames}\n帧间隔中位数：${val(stats.medianPaintIntervalMs)} ms\n最大帧间隔：${val(stats.maxPaintIntervalMs)} ms\n每帧位移中位数：${val(stats.medianPaintDeltaPx)} px\n最大每帧位移：${val(stats.maxPaintDeltaPx)} px\n向上回退帧：${stats.backwardPaintFrames}`;
+  };
+  const reset = () => {
+    scroller.scrollTop = 0;
+    // 等待回顶产生的浏览器事件结束，再开始独立一轮测量
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      started = performance.now();
+      initialTop = scroller.scrollTop;
+      lastPaintedTop = initialTop;
+      scrolls = []; wheels = []; paintedChanges = [];
+      renderSummary();
+    }));
+  };
+  document.querySelector('#reset').addEventListener('click', reset);
+  document.querySelector('#export').addEventListener('click', () => {
+    const url = URL.createObjectURL(new Blob([JSON.stringify(snapshot(), null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url; link.download = `capcap-scroll-${scene}.json`; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+  // 支持浏览器工具只读取得证据；reset 仅用于验收前复位
+  window.scrollReview = { snapshot, reset };
+  setInterval(renderSummary, 250);
+  renderSummary();
+</script>
+</html>

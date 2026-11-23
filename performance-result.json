@@ -1,0 +1,21 @@
+{
+  "append_and_thumbnail_seconds" : 0.44544112682342529,
+  "canvas_allocations_including_initial" : 5,
+  "canvas_growths_after_initial" : 4,
+  "copied_input_bytes_measured" : 157056000,
+  "copied_old_canvas_bytes_measured" : 82944000,
+  "final_capacity_bytes" : 92160000,
+  "final_spare_bytes" : 10368000,
+  "final_used_bytes" : 81792000,
+  "format" : "32BGRA Display P3",
+  "frames" : 100,
+  "old_algorithm_full_image_copy_bytes_theoretical" : 4295808000,
+  "output_pixels" : "1600x12780",
+  "peak_live_canvas_bytes_counter" : 138240000,
+  "pixel_check" : "passed: seven columns on every output row",
+  "preview_checksum" : 85709,
+  "shift_pixels" : 120,
+  "take_image_seconds" : 1.0013580322265625e-05,
+  "total_including_fixture_and_pixel_check_seconds" : 0.56570100784301758,
+  "viewport_pixels" : "1600x900"
+}

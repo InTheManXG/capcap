@@ -1,0 +1,7 @@
+{
+  "source": "capcap/Capture/ScrollStitcher.swift",
+  "source_sha256": "6c89b5a5db128dfc052493a4a858d94a41a1228af0c988b75414902ec43e4a13",
+  "utilities_sha256": "6eea54136e7854a01b728f4aa4017f967e0f13910e01c0b38217bd0d68ed4fbe",
+  "instrumentation": "temporary copy only; allocation and memcpy byte counters",
+  "note": "Performance run used this source snapshot; counters were injected only into a temporary copy"
+}
