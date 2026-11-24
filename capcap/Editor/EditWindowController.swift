@@ -3803,7 +3803,8 @@ private final class ScrollCaptureControlWindow: NSPanel {
     init(selectionRect: NSRect, screenRect: NSRect,
          onToggleAutomatic: @escaping () -> Void, onFinish: @escaping () -> Void) {
         controls = ScrollCaptureControlView(
-            maximumWidth: selectionRect.width - 16,
+            // 小选区允许把控制条放在外侧，不为迁就选区宽度而隐藏按钮文字
+            maximumWidth: screenRect.width - 16,
             onToggleAutomatic: onToggleAutomatic,
             onFinish: onFinish
         )
@@ -3852,8 +3853,11 @@ private final class ScrollCaptureControlView: NSView {
         super.init(frame: .zero)
 
         for button in [automaticButton, finishButton] {
-            button.bezelStyle = .rounded
-            button.font = NSFont.systemFont(ofSize: 13, weight: .medium)
+            // 普通 push 样式固定绘制高度，使用可伸缩样式让视觉与 44 点点击区一致
+            button.bezelStyle = .flexiblePush
+            button.controlSize = .large
+            button.font = NSFont.systemFont(ofSize: 14, weight: .semibold)
+            button.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 14, weight: .semibold)
             button.imagePosition = .imageLeading
             button.target = self
             addSubview(button)
@@ -3862,22 +3866,24 @@ private final class ScrollCaptureControlView: NSView {
         let automaticWidth = ceil(max(
             (L10n.scrollCaptureAutoScroll as NSString).size(withAttributes: attributes).width,
             (L10n.scrollCaptureManualScroll as NSString).size(withAttributes: attributes).width
-        )) + 42
-        let finishWidth = ceil((L10n.scrollCaptureFinish as NSString).size(withAttributes: attributes).width) + 42
-        compact = automaticWidth + finishWidth + 24 > maximumWidth
-        let leftWidth: CGFloat = compact ? 32 : automaticWidth
-        let rightWidth: CGFloat = compact ? 32 : finishWidth
-        setFrameSize(NSSize(width: leftWidth + rightWidth + 24, height: 44))
-        automaticButton.frame = NSRect(x: 8, y: 6, width: leftWidth, height: 32)
-        finishButton.frame = NSRect(x: leftWidth + 16, y: 6, width: rightWidth, height: 32)
+        )) + 56
+        let finishWidth = max(88, ceil((L10n.scrollCaptureFinish as NSString).size(withAttributes: attributes).width) + 48)
+        // 两种滚动状态共用宽度，避免文字切换时控制条左右跳动
+        let primaryWidth = max(148, automaticWidth)
+        compact = primaryWidth + finishWidth + 30 > maximumWidth
+        let leftWidth: CGFloat = compact ? 44 : primaryWidth
+        let rightWidth: CGFloat = compact ? 44 : finishWidth
+        setFrameSize(NSSize(width: leftWidth + rightWidth + 30, height: 64))
+        automaticButton.frame = NSRect(x: 10, y: 10, width: leftWidth, height: 44)
+        finishButton.frame = NSRect(x: leftWidth + 20, y: 10, width: rightWidth, height: 44)
 
         automaticButton.action = #selector(toggleAutomatic)
+        // 深一档的品牌绿保证实底按钮上白色文字的对比度
+        automaticButton.bezelColor = accentGreen.blended(withFraction: 0.4, of: .black)
         automaticButton.setAccessibilityIdentifier("capcap.scroll.automatic")
         finishButton.action = #selector(finish)
         finishButton.title = compact ? "" : L10n.scrollCaptureFinish
         finishButton.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)
-        finishButton.bezelColor = accentGreen
-        finishButton.contentTintColor = .white
         finishButton.toolTip = L10n.scrollCaptureFinish
         finishButton.setAccessibilityLabel(L10n.scrollCaptureFinish)
         finishButton.setAccessibilityIdentifier("capcap.scroll.finish")
@@ -3904,7 +3910,7 @@ private final class ScrollCaptureControlView: NSView {
     @objc private func finish() { onFinish() }
 
     override func draw(_ dirtyRect: NSRect) {
-        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 2, dy: 2), xRadius: 8, yRadius: 8)
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 2, dy: 2), xRadius: 18, yRadius: 18)
         AdaptiveChrome.toolbarBackground.setFill()
         path.fill()
     }
