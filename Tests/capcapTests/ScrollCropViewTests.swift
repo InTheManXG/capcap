@@ -4,6 +4,33 @@ import XCTest
 
 @MainActor
 final class ScrollCropViewTests: XCTestCase {
+    func testCropUsesScreenshotGreenHandlesAndContinuousBorder() throws {
+        let view = ScrollCropView(frame: NSRect(x: 0, y: 0, width: 100, height: 200), image: try makeImage())
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: 100, pixelsHigh: 200,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+            isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ))
+        let graphics = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: bitmap))
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSGraphicsContext.current = graphics
+        view.draw(view.bounds)
+        graphics.flushGraphics()
+
+        let green = try XCTUnwrap(SelectionView.selectionColor.usingColorSpace(.deviceRGB))
+        // 连续取边框上的像素可区分实线与虚线，同时确认控制点不再有白色圆心
+        let points = (20..<40).map { NSPoint(x: $0, y: 1) }
+            + view.handleRects.map { NSPoint(x: $0.midX, y: $0.midY) }
+        for point in points {
+            let color = try XCTUnwrap(bitmap.colorAt(x: Int(point.x), y: 199 - Int(point.y))?.usingColorSpace(.deviceRGB))
+            XCTAssertEqual(color.redComponent, green.redComponent, accuracy: 0.02)
+            XCTAssertEqual(color.greenComponent, green.greenComponent, accuracy: 0.02)
+            XCTAssertEqual(color.blueComponent, green.blueComponent, accuracy: 0.02)
+            XCTAssertGreaterThan(color.alphaComponent, 0.98)
+        }
+    }
+
     func testEveryHandleResizesItsOwnEdgesWithoutInitialJump() throws {
         _ = NSApplication.shared
         let cases: [(SelectionView.HandlePosition, NSPoint, NSRect)] = [

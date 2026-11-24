@@ -7,8 +7,6 @@ final class ScrollCropView: NSView {
     private var cropFractions = NSRect(x: 0, y: 0, width: 1, height: 1)
     private var dragState: (handle: SelectionView.HandlePosition, rect: NSRect, point: NSPoint)?
 
-    private let accent = NSColor(red: 0, green: 212.0 / 255.0, blue: 106.0 / 255.0, alpha: 1.0)
-    private let handleSize: CGFloat = 12
     private let handleHitInset: CGFloat = 10
 
     init(frame frameRect: NSRect, image: NSImage, rotation: ImageRotation = .none) {
@@ -62,7 +60,7 @@ final class ScrollCropView: NSView {
     /// 手柄外框全部位于裁剪框内，避免边缘被滚动容器裁掉；顺序沿用选区的八点枚举
     var handleRects: [NSRect] {
         let rect = selectionRect
-        let size = max(0, min(handleSize, rect.width / 3, rect.height / 3))
+        let size = max(0, min(SelectionView.selectionHandleSize, rect.width / 3, rect.height / 3))
         let centers = SelectionView.handlePositions(for: rect.insetBy(dx: size / 2, dy: size / 2))
         return centers.map {
             NSRect(x: $0.x - size / 2, y: $0.y - size / 2, width: size, height: size)
@@ -70,7 +68,8 @@ final class ScrollCropView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard bounds.width > 0, bounds.height > 0 else { return }
+        guard bounds.width > 0, bounds.height > 0,
+              let context = NSGraphicsContext.current?.cgContext else { return }
         let rect = selectionRect
         let mask = NSBezierPath(rect: bounds)
         mask.append(NSBezierPath(rect: rect))
@@ -78,20 +77,10 @@ final class ScrollCropView: NSView {
         NSColor(white: 0, alpha: 0.62).setFill()
         mask.fill()
 
-        let borderWidth = min(2, rect.width, rect.height)
-        let border = NSBezierPath(rect: rect.insetBy(dx: borderWidth / 2, dy: borderWidth / 2))
-        border.lineWidth = borderWidth
-        accent.setStroke()
-        border.stroke()
-        for handle in handleRects {
-            let width = min(2, handle.width / 3)
-            let path = NSBezierPath(ovalIn: handle.insetBy(dx: width / 2, dy: width / 2))
-            NSColor.white.setFill()
-            path.fill()
-            accent.setStroke()
-            path.lineWidth = width
-            path.stroke()
-        }
+        // 沿用截图选区的实心圆点；边框内缩，避免滚动容器裁掉实线
+        let inset = min(1, rect.width / 2, rect.height / 2)
+        SelectionView.drawSelectionBorder(context: context, rect: rect.insetBy(dx: inset, dy: inset), dashed: false)
+        SelectionView.drawSelectionHandles(context: context, rects: handleRects)
     }
 
     override func mouseDown(with event: NSEvent) {

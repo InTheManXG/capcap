@@ -7133,11 +7133,7 @@ final class SelectionChromeOverlay: NSView {
     private(set) var selectionRectInView: NSRect = .zero
     private(set) var isActiveAndVisible: Bool = false
 
-    private let accentColor = NSColor(red: 0, green: 212.0/255.0, blue: 106.0/255.0, alpha: 1.0)
-    private let handleSize: CGFloat = 8
     private let handleHitSize: CGFloat = 12
-    private let borderWidth: CGFloat = 2.0
-    private let dashPattern: [CGFloat] = [6, 4]
 
     private var dragHandle: SelectionView.HandlePosition?
     private var dragOriginalRect: NSRect = .zero
@@ -7264,22 +7260,12 @@ final class SelectionChromeOverlay: NSView {
         context.saveGState()
         defer { context.restoreGState() }
 
-        context.setStrokeColor(accentColor.cgColor)
-        context.setLineWidth(borderWidth)
-        context.setLineDash(phase: 0, lengths: dashPattern)
-        context.stroke(rect.insetBy(dx: -1, dy: -1))
-        context.setLineDash(phase: 0, lengths: [])
-
-        for pos in SelectionView.handlePositions(for: rect) {
-            let handleRect = NSRect(
-                x: pos.x - handleSize / 2,
-                y: pos.y - handleSize / 2,
-                width: handleSize,
-                height: handleSize
-            )
-            context.setFillColor(accentColor.cgColor)
-            context.fillEllipse(in: handleRect)
-        }
+        SelectionView.drawSelectionBorder(context: context, rect: rect.insetBy(dx: -1, dy: -1))
+        let handleSize = SelectionView.selectionHandleSize
+        SelectionView.drawSelectionHandles(context: context, rects: SelectionView.handlePositions(for: rect).map {
+            NSRect(x: $0.x - handleSize / 2, y: $0.y - handleSize / 2,
+                   width: handleSize, height: handleSize)
+        })
 
         // The SelectionView draws its own size label underneath, but the
         // editor image/beautify frame covers it. Re-draw it here, above the
