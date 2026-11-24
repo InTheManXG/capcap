@@ -19,7 +19,7 @@ final class FullScreenEditorLayoutTests: XCTestCase {
     }
 
     @MainActor
-    func testRestoredLongImageFillsFullScreenViewportAfterCanvasWasScaled() throws {
+    func testCroppingKeepsHandlesVisibleAndRestoresEditorAcrossDisplays() throws {
         _ = NSApplication.shared
         let previousBeautify = Defaults.lastBeautifyEnabled
         let previousToolbarLayout = UserDefaults.standard.object(forKey: "editor.toolbarLayout")
@@ -107,21 +107,48 @@ final class FullScreenEditorLayoutTests: XCTestCase {
             }
 
             XCTAssertLessThan(canvas.presentationScale, 1)
-            scroll.contentView.scroll(to: .zero)
+            let middleOrigin = NSPoint(x: 0, y: (container.frame.height - scroll.contentView.bounds.height) * 0.4)
+            scroll.contentView.scroll(to: middleOrigin)
             scroll.reflectScrolledClipView(scroll.contentView)
+            let originBeforeCrop = scroll.contentView.bounds.origin
             let cropButton = try XCTUnwrap(toolbars.flatMap(\.subviews).compactMap { $0 as? ToolButton }.first {
                 $0.hoverTip == L10n.tipCrop
             })
             cropButton.performClick(nil)
+            let firstCropView = try XCTUnwrap(container.subviews.compactMap { $0 as? ScrollCropView }.first)
+            for handle in firstCropView.handleRects {
+                XCTAssertTrue(firstCropView.visibleRect.insetBy(dx: -0.5, dy: -0.5).contains(handle),
+                              "完整控制点应留在当前屏幕裁剪视口内")
+            }
+            XCTAssertTrue(controller.cancelCrop())
+            XCTAssertNil(firstCropView.superview)
+            XCTAssertEqual(scroll.contentView.bounds.origin.x, originBeforeCrop.x, accuracy: 1)
+            XCTAssertEqual(scroll.contentView.bounds.origin.y, originBeforeCrop.y, accuracy: 1,
+                           "取消裁剪应恢复进入前的滚动位置")
+
+            XCTAssertTrue(canvas.insertEmoji("🎯"))
+            let annotationBeforeCrop = try XCTUnwrap(canvas.selectedAnnotation as? EmojiAnnotation)
+            cropButton.performClick(nil)
             let cropView = try XCTUnwrap(container.subviews.compactMap { $0 as? ScrollCropView }.first)
-            drag(cropView, from: NSPoint(x: cropView.bounds.midX, y: cropView.bounds.minY),
-                 to: NSPoint(x: cropView.bounds.midX, y: cropView.bounds.minY + 50), window: window)
-            scroll.scrollToTop()
-            drag(cropView, from: NSPoint(x: cropView.bounds.midX, y: cropView.bounds.maxY),
-                 to: NSPoint(x: cropView.bounds.midX, y: cropView.bounds.minY + 200), window: window)
-            scroll.contentView.scroll(to: .zero)
-            scroll.reflectScrolledClipView(scroll.contentView)
+            for handle in cropView.handleRects {
+                XCTAssertTrue(cropView.visibleRect.insetBy(dx: -0.5, dy: -0.5).contains(handle))
+            }
+            // 以当前适配整图后的尺寸拖动四边，不能使用只适合原比例的固定像素偏移
+            let drags: [(SelectionView.HandlePosition, NSPoint)] = [
+                (.bottomLeft, NSPoint(x: 0.1, y: 0.15)),
+                (.topRight, NSPoint(x: -0.1, y: -0.2)),
+            ]
+            for (handle, fraction) in drags {
+                let index = try XCTUnwrap(SelectionView.HandlePosition.allCases.firstIndex(of: handle))
+                let rect = cropView.handleRects[index]
+                let start = NSPoint(x: rect.midX, y: rect.midY)
+                let end = NSPoint(x: start.x + cropView.bounds.width * fraction.x,
+                                  y: start.y + cropView.bounds.height * fraction.y)
+                drag(cropView, from: start, to: end, window: window)
+            }
             let expectedCrop = cropView.cropRect
+            XCTAssertLessThan(expectedCrop.width, image.size.width)
+            XCTAssertLessThan(expectedCrop.height, image.size.height)
             let confirm = try XCTUnwrap(host.subviews.flatMap(\.subviews).compactMap { $0 as? ToolButton }.first {
                 $0.hoverTip == L10n.tipScrollCropConfirm
             })
@@ -138,6 +165,12 @@ final class FullScreenEditorLayoutTests: XCTestCase {
             XCTAssertEqual(canvas.convert(canvas.bounds, to: host).width, scroll.contentView.bounds.width, accuracy: 1)
             XCTAssertEqual(scroll.contentView.bounds.maxY, container.frame.maxY, accuracy: 1,
                            "确认裁剪后不能保留失效的滚动原点")
+            canvas.selectAllAnnotations()
+            let annotationAfterCrop = try XCTUnwrap(canvas.selectedAnnotation as? EmojiAnnotation)
+            XCTAssertEqual(annotationAfterCrop.rect.minX, annotationBeforeCrop.rect.minX - expectedCrop.minX,
+                           accuracy: 0.0001)
+            XCTAssertEqual(annotationAfterCrop.rect.minY, annotationBeforeCrop.rect.minY - expectedCrop.minY,
+                           accuracy: 0.0001)
 
             // 直接缓存真实视图层级，验证旧的红色桌面被盖住，工作区实际绘制白色长图
             let white = try cachedColor(in: host, at: NSPoint(x: scroll.frame.midX, y: scroll.frame.midY))

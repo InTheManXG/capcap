@@ -4,13 +4,12 @@ import AppKit
 final class ScrollCropView: NSView {
     private let imageSize: NSSize
     private let pixelSize: NSSize
-    private var bottomFraction: CGFloat = 0
-    private var topFraction: CGFloat = 1
-    private enum Edge { case top, bottom }
-    private var activeEdge: Edge?
+    private var cropFractions = NSRect(x: 0, y: 0, width: 1, height: 1)
+    private var dragState: (handle: SelectionView.HandlePosition, rect: NSRect, point: NSPoint)?
 
     private let accent = NSColor(red: 0, green: 212.0 / 255.0, blue: 106.0 / 255.0, alpha: 1.0)
-    private let edgeHitInset: CGFloat = 16
+    private let handleSize: CGFloat = 12
+    private let handleHitInset: CGFloat = 10
 
     init(frame frameRect: NSRect, image: NSImage, rotation: ImageRotation = .none) {
         imageSize = rotation.orientedSize(image.size)
@@ -31,84 +30,129 @@ final class ScrollCropView: NSView {
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
+        dragState = nil
         needsDisplay = true
     }
 
-    /// 比例不依赖显示缩放；先对齐旋转后的实际像素，再返回左下原点逻辑坐标
+    /// 比例不依赖显示缩放；四条边先对齐旋转后的实际像素，再返回逻辑坐标
     var cropRect: NSRect {
+        let width = max(1, pixelSize.width)
         let height = max(1, pixelSize.height)
-        let bottom = min(height - 1, max(0, (bottomFraction * height).rounded()))
-        let top = min(height, max(bottom + 1, (topFraction * height).rounded()))
+        let left = min(width - 1, max(0, (cropFractions.minX * width).rounded()))
+        let right = min(width, max(left + 1, (cropFractions.maxX * width).rounded()))
+        let bottom = min(height - 1, max(0, (cropFractions.minY * height).rounded()))
+        let top = min(height, max(bottom + 1, (cropFractions.maxY * height).rounded()))
         return NSRect(
-            x: 0,
+            x: left / width * imageSize.width,
             y: bottom / height * imageSize.height,
-            width: imageSize.width,
+            width: (right - left) / width * imageSize.width,
             height: (top - bottom) / height * imageSize.height
         )
     }
 
-    private var cropBottom: CGFloat { bounds.minY + bottomFraction * bounds.height }
-    private var cropTop: CGFloat { bounds.minY + topFraction * bounds.height }
+    private var selectionRect: NSRect {
+        NSRect(
+            x: bounds.minX + cropFractions.minX * bounds.width,
+            y: bounds.minY + cropFractions.minY * bounds.height,
+            width: cropFractions.width * bounds.width,
+            height: cropFractions.height * bounds.height
+        )
+    }
+
+    /// 手柄外框全部位于裁剪框内，避免边缘被滚动容器裁掉；顺序沿用选区的八点枚举
+    var handleRects: [NSRect] {
+        let rect = selectionRect
+        let size = max(0, min(handleSize, rect.width / 3, rect.height / 3))
+        let centers = SelectionView.handlePositions(for: rect.insetBy(dx: size / 2, dy: size / 2))
+        return centers.map {
+            NSRect(x: $0.x - size / 2, y: $0.y - size / 2, width: size, height: size)
+        }
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         guard bounds.width > 0, bounds.height > 0 else { return }
+        let rect = selectionRect
+        let mask = NSBezierPath(rect: bounds)
+        mask.append(NSBezierPath(rect: rect))
+        mask.windingRule = .evenOdd
         NSColor(white: 0, alpha: 0.62).setFill()
-        NSRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: cropBottom - bounds.minY).fill()
-        NSRect(x: bounds.minX, y: cropTop, width: bounds.width, height: bounds.maxY - cropTop).fill()
-        drawHandle(atY: cropBottom)
-        drawHandle(atY: cropTop)
-    }
+        mask.fill()
 
-    private func drawHandle(atY y: CGFloat) {
+        let borderWidth = min(2, rect.width, rect.height)
+        let border = NSBezierPath(rect: rect.insetBy(dx: borderWidth / 2, dy: borderWidth / 2))
+        border.lineWidth = borderWidth
         accent.setStroke()
-        let line = NSBezierPath()
-        line.lineWidth = 2
-        line.move(to: NSPoint(x: bounds.minX, y: y))
-        line.line(to: NSPoint(x: bounds.maxX, y: y))
-        line.stroke()
-
-        let tabWidth = min(48, bounds.width)
-        let tab = NSRect(x: bounds.midX - tabWidth / 2, y: y - 7, width: tabWidth, height: 14)
-        accent.setFill()
-        NSBezierPath(roundedRect: tab, xRadius: 7, yRadius: 7).fill()
-        NSColor.white.setFill()
-        for dx in [-7.0, 0.0, 7.0] {
-            NSBezierPath(ovalIn: NSRect(x: tab.midX + dx - 1.5, y: tab.midY - 1.5, width: 3, height: 3)).fill()
+        border.stroke()
+        for handle in handleRects {
+            let width = min(2, handle.width / 3)
+            let path = NSBezierPath(roundedRect: handle.insetBy(dx: width / 2, dy: width / 2), xRadius: 2, yRadius: 2)
+            NSColor.white.setFill()
+            path.fill()
+            accent.setStroke()
+            path.lineWidth = width
+            path.stroke()
         }
     }
 
     override func mouseDown(with event: NSEvent) {
-        activeEdge = edge(at: convert(event.locationInWindow, from: nil))
+        let point = convert(event.locationInWindow, from: nil)
+        guard let handle = handle(at: point) else { return }
+        dragState = (handle, selectionRect, point)
+        SelectionView.setCursorForHandle(handle)
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard let activeEdge, bounds.height > 0 else { return }
-        // 边缘拖出可视区时滚动画布，让长图的裁剪线能继续移动
+        guard let dragState, bounds.width > 0, bounds.height > 0 else { return }
         _ = autoscroll(with: event)
         let point = convert(event.locationInWindow, from: nil)
-        let fraction = (point.y - bounds.minY) / bounds.height
-        // 小图不能产生倒置范围；任何缩放下至少保留一个实际图片像素
-        let minimumFraction = min(1, max(1 / max(1, pixelSize.height), 12 / bounds.height))
-        switch activeEdge {
-        case .top:
-            topFraction = min(1, max(bottomFraction + minimumFraction, fraction))
-        case .bottom:
-            bottomFraction = max(0, min(topFraction - minimumFraction, fraction))
+        let delta = NSPoint(x: point.x - dragState.point.x, y: point.y - dragState.point.y)
+        let original = dragState.rect
+        // 内缩手柄只影响命中位置，边界始终从原框加鼠标位移，首次拖动不会跳边
+        let minimumWidth = min(original.width, bounds.width, max(12, bounds.width / max(1, pixelSize.width)))
+        let minimumHeight = min(original.height, bounds.height, max(12, bounds.height / max(1, pixelSize.height)))
+        var left = original.minX, right = original.maxX
+        var bottom = original.minY, top = original.maxY
+        switch dragState.handle {
+        case .topLeft, .bottomLeft, .leftCenter:
+            left = max(bounds.minX, min(original.maxX - minimumWidth, original.minX + delta.x))
+        case .topRight, .bottomRight, .rightCenter:
+            right = min(bounds.maxX, max(original.minX + minimumWidth, original.maxX + delta.x))
+        default:
+            break
         }
+        switch dragState.handle {
+        case .bottomLeft, .bottomRight, .bottomCenter:
+            bottom = max(bounds.minY, min(original.maxY - minimumHeight, original.minY + delta.y))
+        case .topLeft, .topRight, .topCenter:
+            top = min(bounds.maxY, max(original.minY + minimumHeight, original.maxY + delta.y))
+        default:
+            break
+        }
+        cropFractions = NSRect(
+            x: (left - bounds.minX) / bounds.width,
+            y: (bottom - bounds.minY) / bounds.height,
+            width: (right - left) / bounds.width,
+            height: (top - bottom) / bounds.height
+        )
         needsDisplay = true
     }
 
     override func mouseUp(with event: NSEvent) {
-        activeEdge = nil
+        dragState = nil
     }
 
-    private func edge(at point: NSPoint) -> Edge? {
-        guard point.x >= bounds.minX - edgeHitInset, point.x <= bounds.maxX + edgeHitInset else { return nil }
-        let topDistance = abs(point.y - cropTop)
-        let bottomDistance = abs(point.y - cropBottom)
-        if topDistance <= edgeHitInset && topDistance <= bottomDistance { return .top }
-        if bottomDistance <= edgeHitInset { return .bottom }
-        return nil
+    private func handle(at point: NSPoint) -> SelectionView.HandlePosition? {
+        var closest: Int?
+        var closestDistance = CGFloat.greatestFiniteMagnitude
+        for (index, rect) in handleRects.enumerated() where rect.insetBy(dx: -handleHitInset, dy: -handleHitInset).contains(point) {
+            let dx = point.x - rect.midX, dy = point.y - rect.midY
+            let distance = dx * dx + dy * dy
+            if distance < closestDistance {
+                closest = index
+                closestDistance = distance
+            }
+        }
+        return closest.map { SelectionView.HandlePosition.allCases[$0] }
     }
 
     override func updateTrackingAreas() {
@@ -123,7 +167,10 @@ final class ScrollCropView: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        (edge(at: point) != nil ? NSCursor.resizeUpDown : NSCursor.arrow).set()
+        if let handle = handle(at: convert(event.locationInWindow, from: nil)) {
+            SelectionView.setCursorForHandle(handle)
+        } else {
+            NSCursor.arrow.set()
+        }
     }
 }

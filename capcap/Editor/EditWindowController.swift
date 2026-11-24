@@ -21,13 +21,16 @@ enum EditorToolbarPlacement {
         )
     }
 
-    /// 长图按宽度适配并保留纵向滚动，短图居中且不放大
+    /// 编辑按宽度适配并保留滚动，裁剪时完整显示图片，短图不放大
     static func fullScreenImageLayout(
         imageSize: NSSize,
         padding: NSEdgeInsets,
-        in workspace: NSRect
+        in workspace: NSRect,
+        fitEntireImage: Bool = false
     ) -> (scale: CGFloat, viewport: NSRect) {
-        let scale = min(1, max(1, workspace.width - padding.left - padding.right) / max(1, imageSize.width))
+        let widthScale = max(1, workspace.width - padding.left - padding.right) / max(1, imageSize.width)
+        let heightScale = max(1, workspace.height - padding.top - padding.bottom) / max(1, imageSize.height)
+        let scale = min(1, widthScale, fitEntireImage ? heightScale : 1)
         let size = NSSize(
             width: min(workspace.width, imageSize.width * scale + padding.left + padding.right),
             height: min(workspace.height, imageSize.height * scale + padding.top + padding.bottom)
@@ -331,6 +334,7 @@ class EditWindowController {
     // 裁剪直接覆盖同一张编辑画布，工具栏始终保留在全屏工作区
     private var isCropping = false
     private var scrollCropView: ScrollCropView?
+    private var scrollOriginBeforeCrop: NSPoint?
 
     private var isFullScreenImageEditor: Bool { canvasView?.hasPreviewImage == true }
 
@@ -1671,7 +1675,8 @@ class EditWindowController {
         let layout = EditorToolbarPlacement.fullScreenImageLayout(
             imageSize: canvasView.imageRotation.orientedSize(image.size),
             padding: container.contentPadding,
-            in: workspace
+            in: workspace,
+            fitEntireImage: isCropping
         )
         canvasView.setPresentationScale(layout.scale)
         container.canvasSizeDidChange()
@@ -2390,9 +2395,11 @@ class EditWindowController {
         canvasView.commitActiveTextEditing()
 
         selectTool(.none)
+        scrollOriginBeforeCrop = canvasScrollView?.contentView.bounds.origin
         isCropping = true
         toolbars.forEach { $0.setActive(true, for: .crop) }
-        updateEditorInteractionState()
+        // 裁剪时显示完整图像，四角和四边的控制点才能同时留在可视区
+        layoutFullScreenImageEditor()
 
         let cropView = ScrollCropView(
             frame: canvasView.convert(canvasView.bounds, to: container),
@@ -2418,12 +2425,15 @@ class EditWindowController {
         // 旧遮罩仍按裁剪前的整张图定位，先撤下再重排，避免它覆盖缩小后的画布
         cropView.removeFromSuperview()
         scrollCropView = nil
+        isCropping = false
         guard canvasView?.cropPreviewImage(to: cropRect) == true else {
+            isCropping = true
             scrollCropView = cropView
+            layoutFullScreenImageEditor()
             beautifyContainerView?.addSubview(cropView)
             return false
         }
-        exitCropMode()
+        exitCropMode(restoringScrollPosition: false)
         canvasScrollView?.scrollToTop()
         canvasScrollView?.needsDisplay = true
         hostSelectionView?.displayIfNeeded()
@@ -2440,7 +2450,9 @@ class EditWindowController {
         return "\(Int(size.width.rounded())) x \(Int(size.height.rounded()))"
     }
 
-    private func exitCropMode() {
+    private func exitCropMode(restoringScrollPosition: Bool = true) {
+        let scrollOrigin = restoringScrollPosition ? scrollOriginBeforeCrop : nil
+        scrollOriginBeforeCrop = nil
         isCropping = false
         scrollCropView?.removeFromSuperview()
         scrollCropView = nil
@@ -2449,8 +2461,7 @@ class EditWindowController {
             subToolbarView = nil
         }
         toolbars.forEach { $0.setActive(false, for: .crop) }
-        updateEditorInteractionState()
-        updateCaptureActionAvailability()
+        layoutFullScreenImageEditor(preservingScrollOrigin: scrollOrigin)
         bringEditorToFront()
     }
 
@@ -3227,6 +3238,7 @@ class EditWindowController {
         scrollCapturer?.onPreviewUpdated = nil
         scrollCapturer = nil
         isCropping = false
+        scrollOriginBeforeCrop = nil
         scrollCropView?.removeFromSuperview()
         scrollCropView = nil
         fullScreenBackgroundView?.removeFromSuperview()
