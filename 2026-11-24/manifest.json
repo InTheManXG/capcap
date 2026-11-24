@@ -1,0 +1,41 @@
+{
+  "capture_code_revision": "fc35f1d",
+  "icon_code_revision": "808b68d",
+  "date": "2026-11-24",
+  "source": "Self-contained synthetic acceptance fixture and native icon preview; no everyday desktop content",
+  "artifacts": {
+    "2026-11-24/VALIDATION.md": {
+      "bytes": 4307,
+      "sha256": "4b5d5bea0992728fc135b47489180baeeb2ab84d3669605f8e98556187300047"
+    },
+    "2026-11-24/chat-scroll.json": {
+      "bytes": 159926,
+      "sha256": "649321ac8de8d16522446fe13aa539b9417a408f1c02326836d78d7791f8e46d"
+    },
+    "2026-11-24/chat.png": {
+      "bytes": 2807664,
+      "sha256": "49aef561cca1bc780536e8157e2b7fa37bed9522e5490212c60396a1935a37db"
+    },
+    "2026-11-24/event-validation-summary.json": {
+      "bytes": 6888,
+      "sha256": "09ec2b714566d458f80d14a6d6230a6e78d3cf5f634cae2f17c0eebef73fd925"
+    },
+    "2026-11-24/index.html": {
+      "bytes": 9530,
+      "sha256": "4a984586946c4c99bb6f41adda49ba0fe3df69dfcb8b718e57fd020801cbbe54"
+    },
+    "2026-11-24/sticky-scroll.json": {
+      "bytes": 186107,
+      "sha256": "c90e3001fa184a4f656e81627000e37e5a262d3ee584b040a9ed407c55ae8b24"
+    },
+    "2026-11-24/sticky.png": {
+      "bytes": 2647115,
+      "sha256": "84fa42cc9f88f1e516b9b77ddb2c0b482dca64d665d9496461597a67e806e52f"
+    },
+    "icons/scroll-capture-native.png": {
+      "bytes": 80408,
+      "sha256": "a86865fa7f85c9a6c69984df925252d2b70a289454563a60997d956adf1bbdaa"
+    }
+  },
+  "scroll_pr_head": "62f637d3bf65305e741a96c952a998d2c3790c0f"
+}
