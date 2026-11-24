@@ -214,8 +214,8 @@
 "mergedLongScreenshot" = "긴 스크린샷이 병합됨";
 "autoScrollPermissionNeeded" = "스크롤 캡처에는 손쉬운 사용 권한이 필요합니다. 시스템 설정 → 개인정보 보호 및 보안 → 손쉬운 사용 에서 capcap 을 허용하세요";
 "cropLongScreenshotHint" = "모서리나 가장자리를 드래그해 자를 범위를 조정한 뒤 Enter 키나 체크 표시로 확인";
-"scrollCaptureHint" = "자동 스크롤 중 · 스페이스로 수동 전환 · 다른 키 또는 완료로 종료";
-"scrollCaptureManualHint" = "직접 스크롤 · 스페이스로 자동 전환 · 다른 키 또는 완료로 종료";
+"scrollCaptureHint" = "자동 스크롤 중 · 스페이스로 수동 전환 · 다른 키 또는 완료로 종료 · Esc로 취소";
+"scrollCaptureManualHint" = "직접 스크롤 · 스페이스로 자동 전환 · 다른 키 또는 완료로 종료 · Esc로 취소";
 "scrollCaptureManualHintNoKeyboard" = "페이지를 직접 스크롤한 뒤 완료를 눌러 종료";
 "scrollCaptureFailed" = "스크롤 영역을 캡처하지 못했습니다, 다시 시도하세요";
 "scrollCaptureIncomplete" = "일부 내용이 누락되었을 수 있습니다. 캡처된 부분을 자를 수 있습니다";

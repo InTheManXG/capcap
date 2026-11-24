@@ -214,8 +214,8 @@
 "mergedLongScreenshot" = "Long screenshot merged";
 "autoScrollPermissionNeeded" = "Scroll capture needs Accessibility access — grant capcap in System Settings → Privacy & Security → Accessibility";
 "cropLongScreenshotHint" = "Drag corners or edges to crop, then press Enter or click the checkmark to confirm";
-"scrollCaptureHint" = "Space: manual scrolling · Other keys or Finish: end";
-"scrollCaptureManualHint" = "Scroll manually · Space: auto scroll · Other keys or Finish: end";
+"scrollCaptureHint" = "Space: manual scrolling · Other keys or Finish: end · Esc: cancel";
+"scrollCaptureManualHint" = "Scroll manually · Space: auto scroll · Other keys or Finish: end · Esc: cancel";
 "scrollCaptureManualHintNoKeyboard" = "Scroll the page, then click Finish to end";
 "scrollCaptureFailed" = "Could not capture the scrolling area, please try again";
 "scrollCaptureIncomplete" = "Some content may be missing · Crop the captured portion";

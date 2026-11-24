@@ -32,7 +32,7 @@ final class AutoScroller {
     private let queue = DispatchQueue(label: "capcap.auto-scroll", qos: .userInitiated)
     private let motionQueue = DispatchQueue(label: "capcap.auto-scroll-motion", qos: .userInteractive)
     private let eventSource = CGEventSource(stateID: .hidSystemState)
-    private let onKeyPressed: (() -> Void)?
+    private let onKeyPressed: ((NSEvent) -> Void)?
     private var motionTimer: DispatchSourceTimer?
 
     /// Stamped onto capcap's synthetic scroll events so the input-blocking
@@ -66,7 +66,7 @@ final class AutoScroller {
         interactiveRect: CGRect? = nil,
         speedPointsPerSecond: Double,
         stallThreshold: Int = 4,
-        onKeyPressed: (() -> Void)? = nil
+        onKeyPressed: ((NSEvent) -> Void)? = nil
     ) {
         self.location = centerPoint
         self.blockingRect = blockingRect
@@ -287,7 +287,7 @@ final class AutoScroller {
     /// Installs a session-level event tap that drops the user's own mouse
     /// events while the pointer is inside the capture region, so manual
     /// scrolling or clicking can't disturb the page mid-capture.
-    /// 空格交给会话监听切换模式，其他按键结束截图且不会传给底层页面
+    /// 空格交给会话监听切换模式，其他按键交给会话区分取消与完成，且不传给底层页面
     /// capcap's own synthetic scroll carries `syntheticTag` and is always let
     /// through.
     private func installInputBlocker() {
@@ -325,7 +325,7 @@ final class AutoScroller {
     }
 
     /// Decides each tapped event's fate. Runs on the main run loop.
-    private func handleTappedEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+    func handleTappedEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         let passthrough = Unmanaged.passUnretained(event)
 
         switch type {
@@ -344,8 +344,9 @@ final class AutoScroller {
             return blockingRect.contains(event.location) ? nil : passthrough
 
         case .keyDown:
+            guard let keyEvent = NSEvent(cgEvent: event) else { return passthrough }
             // 空格交给整个截图会话的切换监听，不能先取消自动滚动并结束长图
-            if let keyEvent = NSEvent(cgEvent: event), ScrollCaptureKeyState.isModeSwitchKey(keyEvent) {
+            if ScrollCaptureKeyState.isModeSwitchKey(keyEvent) {
                 return passthrough
             }
             lock.lock()
@@ -356,7 +357,7 @@ final class AutoScroller {
             if !wasCancelled {
                 let onKeyPressed = onKeyPressed
                 DispatchQueue.main.async {
-                    onKeyPressed?()
+                    onKeyPressed?(keyEvent)
                 }
             }
             return nil

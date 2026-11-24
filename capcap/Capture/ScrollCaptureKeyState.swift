@@ -16,7 +16,8 @@ struct ScrollCaptureKeyState {
     }
 
     mutating func isFinishKey(_ event: NSEvent) -> Bool {
-        if event.type == .keyDown { return !Self.isModeSwitchKey(event) }
+        // Escape 保留给取消整次截图，不能先触发拼接
+        if event.type == .keyDown { return Int(event.keyCode) != kVK_Escape && !Self.isModeSwitchKey(event) }
         guard event.type == .flagsChanged else { return false }
         let current = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         defer { modifiers = current }

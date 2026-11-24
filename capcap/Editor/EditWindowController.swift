@@ -2164,6 +2164,11 @@ class EditWindowController {
 
     func handleScrollCaptureKeyEvent(_ event: NSEvent) -> Bool {
         guard isScrollCaptureBusy else { return false }
+        if event.type == .keyDown, Int(event.keyCode) == kVK_Escape {
+            // 采集和收尾阶段都允许取消；清理会话后，迟到的拼接结果会被丢弃
+            close()
+            return true
+        }
         if ScrollCaptureKeyState.isModeSwitchKey(event) {
             // 长按只吞掉重复事件；首帧未就绪或正在收尾时也不能重新启动
             if event.type == .keyDown, !event.isARepeat, isScrollCapturing {
@@ -2267,16 +2272,17 @@ class EditWindowController {
             )
         }
         let center = Self.scrollCaptureEventPoint(in: captureRect, avoiding: interactiveRect)
+        let sessionID = scrollCaptureSessionID
 
         let scroller = AutoScroller(
             centerPoint: center,
             blockingRect: captureRect,
             interactiveRect: interactiveRect,
             speedPointsPerSecond: speed,
-            onKeyPressed: { [weak self, weak capturer] in
-                guard let self, let capturer, self.isScrollCapturing,
-                      self.scrollCapturer === capturer else { return }
-                self.stopScrollCapture()
+            onKeyPressed: { [weak self] event in
+                // 按键排队期间可能已进入收尾，但不能影响后来启动的截图会话
+                guard let self, self.scrollCaptureSessionID == sessionID else { return }
+                _ = self.handleScrollCaptureKeyEvent(event)
             }
         )
         autoScroller = scroller
