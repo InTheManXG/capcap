@@ -83,6 +83,8 @@ final class EditCanvasCropTests: XCTestCase {
             }
             // 屏幕缩放不应改变裁剪所使用的图片逻辑坐标
             canvas.setPresentationScale(0.5)
+            // 旋转会退出原有选择，重新选中后验证裁剪对当前标注的保留与平移
+            XCTAssertTrue(canvas.selectAllAnnotations())
 
             XCTAssertTrue(canvas.cropPreviewImage(to: displayedCrop), "\(rotation)")
 

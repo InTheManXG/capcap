@@ -234,35 +234,16 @@ enum FixedImageCropRenderer {
         guard let cgImage = image.cgImagePreservingBacking() else { return nil }
         let scaleX = CGFloat(cgImage.width) / imageBounds.width
         let scaleY = CGFloat(cgImage.height) / imageBounds.height
-        let pixelsWide = max(1, Int(round(clipped.width * scaleX)))
-        let pixelsHigh = max(1, Int(round(clipped.height * scaleY)))
-        guard let bitmap = NSBitmapImageRep(
-            bitmapDataPlanes: nil,
-            pixelsWide: pixelsWide,
-            pixelsHigh: pixelsHigh,
-            bitsPerSample: 8,
-            samplesPerPixel: 4,
-            hasAlpha: true,
-            isPlanar: false,
-            colorSpaceName: .deviceRGB,
-            bytesPerRow: 0,
-            bitsPerPixel: 0
-        ), let graphicsContext = NSGraphicsContext(bitmapImageRep: bitmap) else {
-            return nil
-        }
-        bitmap.size = clipped.size
-
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = graphicsContext
-        graphicsContext.imageInterpolation = .none
-        image.draw(
-            in: NSRect(origin: .zero, size: clipped.size),
-            from: clipped,
-            operation: .copy,
-            fraction: 1
+        // 长图直接裁原始像素，避免 NSImage 二次绘制使用缩略缓存或超大离屏画布
+        let pixels = CGRect(
+            x: (clipped.minX * scaleX).rounded(),
+            y: ((imageBounds.height - clipped.maxY) * scaleY).rounded(),
+            width: max(1, (clipped.width * scaleX).rounded()),
+            height: max(1, (clipped.height * scaleY).rounded())
         )
-        graphicsContext.flushGraphics()
-        NSGraphicsContext.restoreGraphicsState()
+        guard let cropped = cgImage.cropping(to: pixels) else { return nil }
+        let bitmap = NSBitmapImageRep(cgImage: cropped)
+        bitmap.size = clipped.size
 
         let result = NSImage(size: clipped.size)
         result.addRepresentation(bitmap)
@@ -2433,9 +2414,19 @@ class EditWindowController {
             return false
         }
 
-        guard canvasView?.cropPreviewImage(to: cropView.cropRect) == true else { return false }
+        let cropRect = cropView.cropRect
+        // 旧遮罩仍按裁剪前的整张图定位，先撤下再重排，避免它覆盖缩小后的画布
+        cropView.removeFromSuperview()
+        scrollCropView = nil
+        guard canvasView?.cropPreviewImage(to: cropRect) == true else {
+            scrollCropView = cropView
+            beautifyContainerView?.addSubview(cropView)
+            return false
+        }
         exitCropMode()
         canvasScrollView?.scrollToTop()
+        canvasScrollView?.needsDisplay = true
+        hostSelectionView?.displayIfNeeded()
         return true
     }
 

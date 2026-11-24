@@ -2109,7 +2109,12 @@ class EditCanvasView: NSView {
     func loadPreviewImage(_ image: NSImage) {
         cancelInFlightInteraction()
         previewImage = image
+        // 新底图的逻辑尺寸不能继承旧选区的缩放，否则全屏视口与实际画布会错位
+        frameRotation = 0
+        presentationScale = 1
         setFrameSize(image.size)
+        setBoundsSize(image.size)
+        frameRotation = imageRotation.degrees
         needsDisplay = true
     }
 
