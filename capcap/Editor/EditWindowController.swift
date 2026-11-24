@@ -19,6 +19,40 @@ enum EditorToolbarPlacement {
         return NSRect(origin: NSPoint(x: x, y: y), size: size)
     }
 
+    static func scrollCaptureHintRect(referenceRect: NSRect, in bounds: NSRect,
+                                      size: NSSize, avoiding controls: NSRect) -> NSRect? {
+        let safe = bounds.insetBy(dx: edgeMargin, dy: edgeMargin)
+        let x = max(safe.minX, min(referenceRect.midX - size.width / 2, safe.maxX - size.width))
+        let inside = NSRect(x: x, y: referenceRect.maxY - 12 - size.height,
+                            width: size.width, height: size.height)
+        var candidates = referenceRect.contains(inside) ? [inside] : []
+        // 矮选区无法上下并排时，把提示移到外侧，并始终保留按钮周围的间距
+        candidates += [referenceRect.maxY + edgeMargin,
+                       referenceRect.minY - edgeMargin - size.height,
+                       controls.maxY + edgeMargin,
+                       controls.minY - edgeMargin - size.height,
+                       safe.maxY - size.height, safe.minY].map {
+            NSRect(x: x, y: $0, width: size.width, height: size.height)
+        }
+        return candidates.first {
+            safe.contains($0) && !$0.intersects(controls.insetBy(dx: -edgeMargin, dy: -edgeMargin))
+        }
+    }
+
+    static func scrollCapturePreviewRect(referenceRect: NSRect, in bounds: NSRect,
+                                         size: NSSize, avoiding obstacles: [NSRect]) -> NSRect? {
+        let safe = bounds.insetBy(dx: edgeMargin, dy: edgeMargin)
+        let y = max(safe.minY, min(referenceRect.maxY - size.height, safe.maxY - size.height))
+        // 预览优先放右侧，放不下则放左侧；不能挤占提示和结束按钮
+        return [referenceRect.maxX + 12, referenceRect.minX - size.width - 12].map {
+            NSRect(x: $0, y: y, width: size.width, height: size.height)
+        }.first { candidate in
+            safe.contains(candidate) && !obstacles.contains {
+                candidate.intersects($0.insetBy(dx: -edgeMargin, dy: -edgeMargin))
+            }
+        }
+    }
+
     static func primaryToolbarRect(
         referenceRect: NSRect,
         in bounds: NSRect,
@@ -1904,10 +1938,10 @@ class EditWindowController {
         CATransaction.flush()
 
         // 提示窗口始终排除在采集之外，收尾补帧也沿用同一排除列表
-        let hintWindow = ScrollCaptureHintWindow(text: manualScrollCaptureHint)
-        hintWindow.present(in: selectionRect)
-        scrollCaptureHintWindow = hintWindow
         showScrollCaptureControl()
+        let hintWindow = ScrollCaptureHintWindow(text: manualScrollCaptureHint)
+        scrollCaptureHintWindow = hintWindow
+        updateScrollCaptureHint(manualScrollCaptureHint)
         let previewWindow = ScrollPreviewWindow()
         scrollPreviewWindow = previewWindow
 
@@ -1954,7 +1988,7 @@ class EditWindowController {
             autoScroller = nil
             startManualScrollCapture(capturer: capturer)
             scrollCaptureControlWindow?.setAutomatic(false, enabled: true)
-            scrollCaptureHintWindow?.updateText(manualScrollCaptureHint, in: selectionRect)
+            updateScrollCaptureHint(manualScrollCaptureHint)
         } else {
             // 首帧完成前不启动自动滚动，避免丢失选区顶部；授权失败保留当前手动会话
             guard manualScrollCaptureTimer != nil else { return }
@@ -1965,7 +1999,7 @@ class EditWindowController {
             stopManualScrollCapture()
             scrollCaptureControlWindow?.setAutomatic(true, enabled: false)
             let hint = scrollCaptureModeSwitchTap != nil ? L10n.scrollCaptureHint : L10n.scrollCaptureAutoScrolling
-            scrollCaptureHintWindow?.updateText(hint, in: selectionRect)
+            updateScrollCaptureHint(hint)
             startAutoScroll(capturer: capturer)
         }
     }
@@ -3216,13 +3250,31 @@ class EditWindowController {
 
     private func updateScrollPreview(_ image: NSImage) {
         guard isScrollCapturing else { return }
-        scrollPreviewWindow?.updatePreview(image, anchorRect: selectionRect)
+        scrollPreviewWindow?.updatePreview(image)
+        positionScrollPreview()
+    }
+
+    private func updateScrollCaptureHint(_ text: String) {
+        guard let controls = scrollCaptureControlWindow else { return }
+        scrollCaptureHintWindow?.updateText(text, in: selectionRect,
+                                            screenRect: screen.visibleFrame, avoiding: controls.frame)
+        positionScrollPreview()
+    }
+
+    private func positionScrollPreview() {
+        let windows: [NSWindow?] = [scrollCaptureControlWindow, scrollCaptureHintWindow]
+        let obstacles = windows.compactMap { window -> NSRect? in
+            guard let window, window.isVisible else { return nil }
+            return window.frame
+        }
+        scrollPreviewWindow?.position(anchorRect: selectionRect, screenRect: screen.visibleFrame,
+                                       avoiding: obstacles)
     }
 
     private func showScrollCaptureControl() {
         let controlWindow = ScrollCaptureControlWindow(
             selectionRect: selectionRect,
-            screenRect: screen.frame,
+            screenRect: screen.visibleFrame,
             onToggleAutomatic: { [weak self] in self?.toggleAutomaticScrollCapture() },
             onFinish: { [weak self] in self?.stopScrollCapture() }
         )
@@ -3784,16 +3836,11 @@ final class MoveSelectionDragHandle: NSView {
     }
 }
 
-/// Persistent "press any key to finish" hint shown centered near the top of
-/// the selection during auto-scroll. It is its own window so it can be
-/// excluded from the ScreenCaptureKit capture — otherwise it would be baked
-/// into every stitched frame of the long screenshot.
+/// 提示独立成窗以排除在截图外，位置会避让控制条并限制在当前屏幕内
 private final class ScrollCaptureHintWindow: NSPanel {
     private let label = NSTextField(labelWithString: "")
     private let horizontalPadding: CGFloat = 14
     private let verticalPadding: CGFloat = 8
-    /// Gap between the selection's top edge and the hint pill.
-    private let topInset: CGFloat = 12
 
     init(text: String) {
         super.init(
@@ -3817,32 +3864,43 @@ private final class ScrollCaptureHintWindow: NSPanel {
         label.font = NSFont.systemFont(ofSize: 13, weight: .medium)
         label.textColor = .labelColor
         label.alignment = .center
+        label.maximumNumberOfLines = 0
+        label.lineBreakMode = .byWordWrapping
+        label.cell?.usesSingleLineMode = false
+        label.cell?.wraps = true
+        label.cell?.isScrollable = false
         container.addSubview(label)
         contentView = container
     }
 
-    /// Size to the text and place top-center inside `selectionRect`
-    /// (AppKit screen coordinates).
-    func present(in selectionRect: NSRect) {
-        label.sizeToFit()
-        let textSize = label.frame.size
-        let width = textSize.width + horizontalPadding * 2
-        let height = textSize.height + verticalPadding * 2
-
-        contentView?.frame = NSRect(x: 0, y: 0, width: width, height: height)
-        label.setFrameOrigin(NSPoint(x: horizontalPadding, y: verticalPadding))
-
-        let origin = NSPoint(
-            x: selectionRect.midX - width / 2,
-            y: selectionRect.maxY - topInset - height
+    func present(in selectionRect: NSRect, screenRect: NSRect, avoiding controls: NSRect) {
+        let maxTextWidth = max(1, min(520, screenRect.width - 16) - horizontalPadding * 2)
+        // NSTextField 两侧还有内部留白，测量时扣除它，避免换行后末行被裁切
+        let textBounds = (label.stringValue as NSString).boundingRect(
+            with: NSSize(width: max(1, maxTextWidth - 4), height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: label.font!]
         )
-        setFrame(NSRect(origin: origin, size: NSSize(width: width, height: height)), display: true)
+        let textSize = NSSize(width: min(maxTextWidth, ceil(textBounds.width) + 4),
+                              height: ceil(textBounds.height) + 2)
+        let size = NSSize(width: textSize.width + horizontalPadding * 2,
+                          height: textSize.height + verticalPadding * 2)
+        guard let frame = EditorToolbarPlacement.scrollCaptureHintRect(
+            referenceRect: selectionRect, in: screenRect, size: size, avoiding: controls
+        ) else {
+            // 显示区域连两块控件都容不下时，优先保留可结束截图的按钮
+            orderOut(nil)
+            return
+        }
+        contentView?.frame = NSRect(origin: .zero, size: size)
+        label.frame = NSRect(origin: NSPoint(x: horizontalPadding, y: verticalPadding), size: textSize)
+        setFrame(frame, display: true)
         orderFrontRegardless()
     }
 
-    func updateText(_ text: String, in selectionRect: NSRect) {
+    func updateText(_ text: String, in selectionRect: NSRect, screenRect: NSRect, avoiding controls: NSRect) {
         label.stringValue = text
-        present(in: selectionRect)
+        present(in: selectionRect, screenRect: screenRect, avoiding: controls)
     }
 
     func dismiss() {
@@ -4170,21 +4228,22 @@ private final class ScrollPreviewWindow: NSPanel {
         contentView = container
     }
 
-    func updatePreview(_ image: NSImage, anchorRect: NSRect) {
+    func updatePreview(_ image: NSImage) {
         imageView.image = image
-        let windowW = maxPreviewWidth + contentInset * 2
-        let windowH = maxPreviewHeight + contentInset * 2
+    }
 
-        // Position to the right of selection, or left if no room
-        let screenFrame = NSScreen.main?.visibleFrame ?? .zero
-        var x = anchorRect.maxX + 12
-        if x + windowW > screenFrame.maxX {
-            x = anchorRect.minX - windowW - 12
+    func position(anchorRect: NSRect, screenRect: NSRect, avoiding obstacles: [NSRect]) {
+        guard imageView.image != nil else { return }
+        let size = NSSize(width: maxPreviewWidth + contentInset * 2,
+                          height: min(maxPreviewHeight + contentInset * 2, screenRect.height - 16))
+        guard let frame = EditorToolbarPlacement.scrollCapturePreviewRect(
+            referenceRect: anchorRect, in: screenRect, size: size, avoiding: obstacles
+        ) else {
+            // 空间不足时收起辅助预览，不能覆盖操作提示
+            orderOut(nil)
+            return
         }
-        // Vertically align to top of selection
-        let y = anchorRect.maxY - windowH
-
-        setFrame(NSRect(x: x, y: y, width: windowW, height: windowH), display: true)
+        setFrame(frame, display: true)
 
         if !isVisible {
             orderFrontRegardless()
