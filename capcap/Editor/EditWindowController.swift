@@ -3934,12 +3934,11 @@ private final class ScrollCaptureControlView: NSView {
         automaticButton.frame = NSRect(x: 10, y: 10, width: leftWidth, height: 44)
         finishButton.frame = NSRect(x: leftWidth + 20, y: 10, width: rightWidth, height: 44)
 
-        // 运行中使用静态状态文字，避免禁用按钮把提示一起淡化到难以辨认
+        // 两种状态共用文字和图标，固定左边距与基线，不随标题长度重新居中
         automaticStatusLabel.font = automaticButton.font
         automaticStatusLabel.textColor = .white
-        automaticStatusLabel.alignment = .center
-        automaticStatusLabel.frame = NSRect(x: 46, y: 22, width: max(0, leftWidth - 44), height: 20)
-        automaticStatusIcon.image = NSImage(systemSymbolName: "arrow.down", accessibilityDescription: nil)
+        automaticStatusLabel.alignment = .left
+        automaticStatusLabel.frame = NSRect(x: 54, y: 22, width: max(0, leftWidth - 52), height: 20)
         automaticStatusIcon.symbolConfiguration = automaticButton.symbolConfiguration
         automaticStatusIcon.contentTintColor = .white
         automaticStatusIcon.frame = NSRect(x: compact ? 24 : 26, y: 24, width: 16, height: 16)
@@ -3966,18 +3965,30 @@ private final class ScrollCaptureControlView: NSView {
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hit = super.hitTest(point)
+        // 共享内容位于按钮之上，手动模式的点击仍交给原生按钮处理
+        if !isAutomatic, hit === automaticStatusLabel || hit === automaticStatusIcon {
+            return automaticButton
+        }
+        return hit
+    }
+
     func setAutomatic(_ automatic: Bool, enabled: Bool) {
         isAutomatic = automatic
         let title = automatic ? L10n.scrollCaptureAutoScrolling : L10n.scrollCaptureAutoScroll
-        automaticButton.title = compact ? "" : title
-        automaticButton.image = NSImage(systemSymbolName: "play.fill", accessibilityDescription: nil)
         automaticButton.toolTip = title
         automaticButton.setAccessibilityLabel(title)
         automaticButton.isEnabled = enabled && !automatic
         automaticButton.isHidden = automatic
         automaticStatusLabel.stringValue = title
-        automaticStatusLabel.isHidden = !automatic || compact
-        automaticStatusIcon.isHidden = !automatic
+        automaticStatusLabel.isHidden = compact
+        automaticStatusLabel.setAccessibilityElement(automatic && !compact)
+        let contentColor: NSColor = automatic || enabled ? .white : .secondaryLabelColor
+        automaticStatusLabel.textColor = contentColor
+        automaticStatusIcon.contentTintColor = contentColor
+        automaticStatusIcon.image = NSImage(systemSymbolName: automatic ? "arrow.down" : "play.fill",
+                                            accessibilityDescription: nil)
         automaticStatusIcon.setAccessibilityLabel(title)
         automaticStatusIcon.setAccessibilityElement(automatic && compact)
         needsDisplay = true
