@@ -286,8 +286,8 @@ final class AutoScroller {
 
     /// Installs a session-level event tap that drops the user's own mouse
     /// events while the pointer is inside the capture region, so manual
-    /// scrolling or clicking can't disturb the page mid-capture. Any key press
-    /// finishes the capture and is swallowed so it does not affect the page.
+    /// scrolling or clicking can't disturb the page mid-capture.
+    /// 空格交给会话监听切换模式，其他按键结束截图且不会传给底层页面
     /// capcap's own synthetic scroll carries `syntheticTag` and is always let
     /// through.
     private func installInputBlocker() {
@@ -344,6 +344,10 @@ final class AutoScroller {
             return blockingRect.contains(event.location) ? nil : passthrough
 
         case .keyDown:
+            // 空格交给整个截图会话的切换监听，不能先取消自动滚动并结束长图
+            if let keyEvent = NSEvent(cgEvent: event), ScrollCaptureKeyState.isModeSwitchKey(keyEvent) {
+                return passthrough
+            }
             lock.lock()
             let wasCancelled = cancelledFlag
             cancelledFlag = true

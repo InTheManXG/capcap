@@ -214,8 +214,8 @@
 "mergedLongScreenshot" = "Capture longue fusionnée";
 "autoScrollPermissionNeeded" = "La capture défilante nécessite l'autorisation Accessibilité — autorisez capcap dans Réglages Système → Confidentialité et sécurité → Accessibilité";
 "cropLongScreenshotHint" = "Faites glisser les bords haut/bas pour rogner — appuyez sur Entrée ou touchez ✓";
-"scrollCaptureHint" = "Défilement automatique · Appuyez sur une touche ou sur Terminer";
-"scrollCaptureManualHint" = "Faites défiler, puis appuyez sur une touche ou sur Terminer";
+"scrollCaptureHint" = "Espace : défilement manuel · Autre touche ou Terminer : arrêter";
+"scrollCaptureManualHint" = "Défilez manuellement · Espace : défilement auto · Autre touche ou Terminer : arrêter";
 "scrollCaptureManualHintNoKeyboard" = "Faites défiler, puis cliquez sur Terminer";
 "scrollCaptureFailed" = "Impossible de capturer la zone défilante, veuillez réessayer";
 "scrollCaptureIncomplete" = "Une partie du contenu peut manquer · Vous pouvez rogner la partie capturée";
@@ -341,7 +341,7 @@
 "insertImageChooseFile" = "Choisir une image";
 "insertImageNoClipboardImage" = "Aucune image dans le presse-papiers";
 "scrollCaptureAutoScroll" = "Défilement automatique";
-"scrollCaptureManualScroll" = "Défilement manuel";
+"scrollCaptureAutoScrolling" = "Défilement automatique en cours";
 "scrollCaptureFinish" = "Terminer";
 
 /* Language */
