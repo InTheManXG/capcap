@@ -3936,19 +3936,20 @@ private final class ScrollCaptureControlView: NSView {
 
         // 运行中使用静态状态文字，避免禁用按钮把提示一起淡化到难以辨认
         automaticStatusLabel.font = automaticButton.font
+        automaticStatusLabel.textColor = .white
         automaticStatusLabel.alignment = .center
         automaticStatusLabel.frame = NSRect(x: 46, y: 22, width: max(0, leftWidth - 44), height: 20)
         automaticStatusIcon.image = NSImage(systemSymbolName: "arrow.down", accessibilityDescription: nil)
         automaticStatusIcon.symbolConfiguration = automaticButton.symbolConfiguration
-        automaticStatusIcon.contentTintColor = .secondaryLabelColor
+        automaticStatusIcon.contentTintColor = .white
         automaticStatusIcon.frame = NSRect(x: compact ? 24 : 26, y: 24, width: 16, height: 16)
         automaticStatusIcon.setAccessibilityElement(false)
         addSubview(automaticStatusLabel)
         addSubview(automaticStatusIcon)
 
         automaticButton.action = #selector(toggleAutomatic)
-        // 深一档的品牌绿保证实底按钮上白色文字的对比度
-        automaticButton.bezelColor = accentGreen.blended(withFraction: 0.4, of: .black)
+        // 手动采集用蓝色操作按钮，与自动采集的绿色状态背景区分
+        automaticButton.bezelColor = NSColor(calibratedRed: 0.08, green: 0.36, blue: 0.76, alpha: 1)
         automaticButton.setAccessibilityIdentifier("capcap.scroll.automatic")
         finishButton.action = #selector(finish)
         finishButton.title = compact ? "" : L10n.scrollCaptureFinish
@@ -3990,7 +3991,7 @@ private final class ScrollCaptureControlView: NSView {
         AdaptiveChrome.toolbarBackground.setFill()
         path.fill()
         if isAutomatic {
-            AdaptiveChrome.subtleFill.setFill()
+            (accentGreen.blended(withFraction: 0.4, of: .black) ?? accentGreen).setFill()
             NSBezierPath(roundedRect: automaticButton.frame, xRadius: 22, yRadius: 22).fill()
         }
     }
