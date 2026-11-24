@@ -124,25 +124,91 @@ final class EditorToolbarPlacementTests: XCTestCase {
         XCTAssertFalse(preview.intersects(controls.insetBy(dx: -8, dy: -8)))
     }
 
-    func testScrollPreviewDoesNotCoverControlsAtTheScreenEdge() {
+    func testScrollPreviewFindsAnotherVisiblePositionAtTheScreenEdge() throws {
         let selection = NSRect(x: 1470, y: 400, width: 30, height: 100)
         let controls = EditorToolbarPlacement.scrollCaptureControlRect(
             referenceRect: selection, in: bounds, size: NSSize(width: 266, height: 64)
         )
-        let preview = EditorToolbarPlacement.scrollCapturePreviewRect(
+        let preview = try XCTUnwrap(EditorToolbarPlacement.scrollCapturePreviewRect(
             referenceRect: selection, in: bounds, size: NSSize(width: 128, height: 408),
             avoiding: [controls]
-        )
+        ))
 
-        XCTAssertNil(preview)
+        XCTAssertTrue(bounds.insetBy(dx: 8, dy: 8).contains(preview))
+        XCTAssertFalse(preview.intersects(controls.insetBy(dx: -8, dy: -8)))
+        XCTAssertEqual(preview.size, NSSize(width: 128, height: 408))
     }
 
-    func testScrollPreviewIsHiddenWhenNeitherSideFitsOnScreen() {
+    func testScrollPreviewMovesInsideTheScreenWhenNeitherSideFits() throws {
         let display = NSRect(x: 0, y: 0, width: 320, height: 240)
         let selection = NSRect(x: 140, y: 100, width: 40, height: 40)
-        let preview = EditorToolbarPlacement.scrollCapturePreviewRect(
+        let preview = try XCTUnwrap(EditorToolbarPlacement.scrollCapturePreviewRect(
             referenceRect: selection, in: display, size: NSSize(width: 128, height: 200),
             avoiding: []
+        ))
+
+        XCTAssertTrue(display.insetBy(dx: 8, dy: 8).contains(preview))
+        XCTAssertEqual(preview.size, NSSize(width: 128, height: 200))
+    }
+
+    func testScrollPreviewUsesVerticalSpaceBeforeShrinking() throws {
+        let display = NSRect(x: 0, y: 0, width: 480, height: 600)
+        let selection = NSRect(x: 160, y: 220, width: 160, height: 160)
+        let obstacles = [
+            NSRect(x: 8, y: 190, width: 160, height: 220),
+            NSRect(x: 312, y: 190, width: 160, height: 220)
+        ]
+        let preview = try XCTUnwrap(EditorToolbarPlacement.scrollCapturePreviewRect(
+            referenceRect: selection, in: display, size: NSSize(width: 200, height: 160),
+            avoiding: obstacles
+        ))
+
+        XCTAssertTrue(display.insetBy(dx: 8, dy: 8).contains(preview))
+        XCTAssertEqual(preview.size, NSSize(width: 200, height: 160))
+        XCTAssertTrue(preview.maxY <= 182 || preview.minY >= 418)
+        for obstacle in obstacles {
+            XCTAssertFalse(preview.intersects(obstacle.insetBy(dx: -8, dy: -8)))
+        }
+        let reordered = try XCTUnwrap(EditorToolbarPlacement.scrollCapturePreviewRect(
+            referenceRect: selection, in: display, size: NSSize(width: 200, height: 160),
+            avoiding: Array(obstacles.reversed())
+        ))
+        XCTAssertEqual(preview, reordered)
+    }
+
+    func testScrollPreviewShrinksProportionallyToTheRemainingSpace() throws {
+        let display = NSRect(x: 0, y: 0, width: 320, height: 240)
+        let obstacle = NSRect(x: 8, y: 88, width: 304, height: 64)
+        let originalSize = NSSize(width: 128, height: 200)
+        let preview = try XCTUnwrap(EditorToolbarPlacement.scrollCapturePreviewRect(
+            referenceRect: NSRect(x: 140, y: 100, width: 40, height: 40),
+            in: display, size: originalSize, avoiding: [obstacle]
+        ))
+
+        XCTAssertTrue(display.insetBy(dx: 8, dy: 8).contains(preview))
+        XCTAssertFalse(preview.intersects(obstacle.insetBy(dx: -8, dy: -8)))
+        XCTAssertLessThan(preview.height, originalSize.height)
+        XCTAssertEqual(preview.width / preview.height, originalSize.width / originalSize.height, accuracy: 0.0001)
+    }
+
+    func testScrollPreviewPrefersFullSizeAboveSelectionBeforeCoveringIt() throws {
+        let display = NSRect(x: 0, y: 0, width: 320, height: 600)
+        let selection = NSRect(x: 8, y: 260, width: 304, height: 40)
+        let preview = try XCTUnwrap(EditorToolbarPlacement.scrollCapturePreviewRect(
+            referenceRect: selection, in: display, size: NSSize(width: 128, height: 200),
+            avoiding: []
+        ))
+
+        XCTAssertEqual(preview.size, NSSize(width: 128, height: 200))
+        XCTAssertFalse(preview.intersects(selection))
+        XCTAssertTrue(display.insetBy(dx: 8, dy: 8).contains(preview))
+    }
+
+    func testScrollPreviewIsHiddenOnlyWhenObstaclesFillTheSafeArea() {
+        let display = NSRect(x: 0, y: 0, width: 320, height: 240)
+        let preview = EditorToolbarPlacement.scrollCapturePreviewRect(
+            referenceRect: NSRect(x: 140, y: 100, width: 40, height: 40),
+            in: display, size: NSSize(width: 128, height: 200), avoiding: [display]
         )
 
         XCTAssertNil(preview)

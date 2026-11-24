@@ -42,15 +42,58 @@ enum EditorToolbarPlacement {
     static func scrollCapturePreviewRect(referenceRect: NSRect, in bounds: NSRect,
                                          size: NSSize, avoiding obstacles: [NSRect]) -> NSRect? {
         let safe = bounds.insetBy(dx: edgeMargin, dy: edgeMargin)
+        guard safe.width > 0, safe.height > 0, size.width > 0, size.height > 0 else { return nil }
+        let blocked = obstacles.map { $0.insetBy(dx: -edgeMargin, dy: -edgeMargin) }.sorted {
+            ($0.minX, $0.minY, $0.width, $0.height) < ($1.minX, $1.minY, $1.width, $1.height)
+        }
         let y = max(safe.minY, min(referenceRect.maxY - size.height, safe.maxY - size.height))
-        // 预览优先放右侧，放不下则放左侧；不能挤占提示和结束按钮
-        return [referenceRect.maxX + 12, referenceRect.minX - size.width - 12].map {
+        // 先保留选区两侧的完整预览；空间紧张时再寻找其他不挡操作的位置
+        if let preferred = [referenceRect.maxX + 12, referenceRect.minX - size.width - 12].map({
             NSRect(x: $0, y: y, width: size.width, height: size.height)
-        }.first { candidate in
-            safe.contains(candidate) && !obstacles.contains {
-                candidate.intersects($0.insetBy(dx: -edgeMargin, dy: -edgeMargin))
+        }).first(where: { candidate in
+            safe.contains(candidate) && !blocked.contains { candidate.intersects($0) }
+        }) { return preferred }
+
+        var available = [safe]
+        for obstacle in blocked {
+            available = available.flatMap { area -> [NSRect] in
+                guard area.intersects(obstacle) else { return [area] }
+                let cut = area.intersection(obstacle)
+                // 保留障碍物四周的完整长条，避免无谓切碎可容纳较大预览的区域
+                return [
+                    NSRect(x: area.minX, y: area.minY, width: cut.minX - area.minX, height: area.height),
+                    NSRect(x: cut.maxX, y: area.minY, width: area.maxX - cut.maxX, height: area.height),
+                    NSRect(x: area.minX, y: area.minY, width: area.width, height: cut.minY - area.minY),
+                    NSRect(x: area.minX, y: cut.maxY, width: area.width, height: area.maxY - cut.maxY)
+                ].filter { $0.width > 0 && $0.height > 0 }
             }
         }
+        let candidates = available.flatMap { area -> [(frame: NSRect, scale: CGFloat, coversSelection: Bool, distance: CGFloat)] in
+            let scale = min(1, area.width / size.width, area.height / size.height)
+            let width = min(area.width, size.width * scale)
+            let height = min(area.height, size.height * scale)
+            let x = max(area.minX, min(referenceRect.maxX + 12, area.maxX - width))
+            let y = max(area.minY, min(referenceRect.maxY - height, area.maxY - height))
+            let origins = [NSPoint(x: x, y: y),
+                           NSPoint(x: referenceRect.minX - width - edgeMargin, y: y),
+                           NSPoint(x: referenceRect.maxX + edgeMargin, y: y),
+                           NSPoint(x: x, y: referenceRect.minY - height - edgeMargin),
+                           NSPoint(x: x, y: referenceRect.maxY + edgeMargin)]
+            return origins.map { NSRect(origin: $0, size: NSSize(width: width, height: height)) }
+                .filter { area.contains($0) }.map { frame in
+                    let dx = max(0, referenceRect.minX - frame.maxX, frame.minX - referenceRect.maxX)
+                    let dy = max(0, referenceRect.minY - frame.maxY, frame.minY - referenceRect.maxY)
+                    return (frame, scale, frame.intersects(referenceRect), dx * dx + dy * dy)
+                }
+        }
+        // 同尺寸先放选区外；完全同分时固定按上方、左方排序，避免跳位
+        return candidates.max {
+            if $0.scale != $1.scale { return $0.scale < $1.scale }
+            if $0.coversSelection != $1.coversSelection { return $0.coversSelection }
+            if $0.distance != $1.distance { return $0.distance > $1.distance }
+            if $0.frame.minY != $1.frame.minY { return $0.frame.minY < $1.frame.minY }
+            return $0.frame.minX > $1.frame.minX
+        }?.frame
     }
 
     static func primaryToolbarRect(
@@ -4235,11 +4278,11 @@ private final class ScrollPreviewWindow: NSPanel {
     func position(anchorRect: NSRect, screenRect: NSRect, avoiding obstacles: [NSRect]) {
         guard imageView.image != nil else { return }
         let size = NSSize(width: maxPreviewWidth + contentInset * 2,
-                          height: min(maxPreviewHeight + contentInset * 2, screenRect.height - 16))
+                          height: maxPreviewHeight + contentInset * 2)
         guard let frame = EditorToolbarPlacement.scrollCapturePreviewRect(
             referenceRect: anchorRect, in: screenRect, size: size, avoiding: obstacles
         ) else {
-            // 空间不足时收起辅助预览，不能覆盖操作提示
+            // 只有屏幕可用区域被完全占用时才收起，普通小选区会换位或等比缩小
             orderOut(nil)
             return
         }
