@@ -381,6 +381,7 @@ enum L10n {
     static var cropLongScreenshotHint: String { s("cropLongScreenshotHint") }
     static var scrollCaptureHint: String { s("scrollCaptureHint") }
     static var scrollCaptureManualHint: String { s("scrollCaptureManualHint") }
+    static var scrollCaptureManualHintNoKeyboard: String { s("scrollCaptureManualHintNoKeyboard") }
     static var scrollCaptureFailed: String { s("scrollCaptureFailed") }
     static var scrollCaptureIncomplete: String { s("scrollCaptureIncomplete") }
     static var scrollCaptureLimitReached: String { s("scrollCaptureLimitReached") }
@@ -551,6 +552,7 @@ enum L10n {
     static var insertImageNoClipboardImage: String { s("insertImageNoClipboardImage") }
     static var scrollCaptureAutoScroll: String { s("scrollCaptureAutoScroll") }
     static var scrollCaptureManualScroll: String { s("scrollCaptureManualScroll") }
+    static var scrollCaptureFinish: String { s("scrollCaptureFinish") }
 
     // Language
     static var languageHeader: String { s("languageHeader") }
