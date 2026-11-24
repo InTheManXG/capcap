@@ -280,6 +280,7 @@
 "tipRedo" = "Rétablir";
 "tipMoveSelection" = "Déplacer la sélection";
 "tipScrollCapture" = "Capture longue";
+"tipCrop" = "Recadrer l’image";
 "tipRotate" = "Rotation";
 "tipRotateLeft" = "Tourner de 90° à gauche";
 "tipRotateRight" = "Tourner de 90° à droite";
@@ -291,7 +292,7 @@
 "tipRecord" = "Enregistrer";
 "tipCancel" = "Annuler";
 "tipConfirm" = "Copier dans le presse-papiers";
-"tipScrollCropConfirm" = "Enregistrer et modifier";
+"tipScrollCropConfirm" = "Confirmer le recadrage";
 "copyQRCodeContent" = "Copier le contenu du QR code";
 
 /* Beautify */

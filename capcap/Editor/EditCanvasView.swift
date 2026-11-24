@@ -530,6 +530,8 @@ class EditCanvasView: NSView {
         let numberCounter: Int
         let imageRotation: ImageRotation
         let spotlightBackgroundBrightness: Double
+        let previewImage: NSImage?
+        let canvasSize: NSSize
     }
 
     private var undoStack: [EditorSnapshot] = []
@@ -555,7 +557,9 @@ class EditCanvasView: NSView {
             annotations: annotations,
             numberCounter: numberCounter,
             imageRotation: imageRotation,
-            spotlightBackgroundBrightness: spotlightBackgroundBrightness
+            spotlightBackgroundBrightness: spotlightBackgroundBrightness,
+            previewImage: previewImage,
+            canvasSize: bounds.size
         )
     }
 
@@ -634,12 +638,21 @@ class EditCanvasView: NSView {
 
     private func apply(_ snapshot: EditorSnapshot) {
         let rotationChanged = imageRotation != snapshot.imageRotation
+        // 进入长图编辑前的标注快照不替换底图，裁剪快照则同时恢复图片与逻辑尺寸
+        let imageChanged = snapshot.previewImage != nil && previewImage !== snapshot.previewImage
         annotations = snapshot.annotations
         numberCounter = snapshot.numberCounter
         imageRotation = snapshot.imageRotation
         spotlightBackgroundBrightness = snapshot.spotlightBackgroundBrightness
+        if imageChanged {
+            previewImage = snapshot.previewImage
+            frameRotation = 0
+            setFrameSize(snapshot.canvasSize)
+            setBoundsSize(snapshot.canvasSize)
+            setPresentationScale(presentationScale)
+        }
         setSelectedIndexes(selectedIndexes, primary: primarySelectedIndex)
-        if rotationChanged { onImageRotationChanged?() }
+        if rotationChanged || imageChanged { onImageRotationChanged?() }
     }
 
     /// Push current state onto the undo stack and clear the redo stack.
@@ -2100,6 +2113,44 @@ class EditCanvasView: NSView {
         needsDisplay = true
     }
 
+    /// 裁剪只替换底图并平移当前标注，历史快照保留原坐标以便完整撤销
+    @discardableResult
+    func cropPreviewImage(to displayedRect: NSRect) -> Bool {
+        guard let image = previewImage else { return false }
+        let imageBounds = NSRect(origin: .zero, size: image.size)
+        let sourceRect = displayedRect
+            .applying(imageRotation.transform(for: image.size).inverted())
+            .standardized.intersection(imageBounds)
+        guard !sourceRect.isNull, sourceRect.width > 0, sourceRect.height > 0,
+              let cropped = FixedImageCropRenderer.crop(image, to: sourceRect) else { return false }
+        guard sourceRect != imageBounds else { return true }
+
+        commitActiveTextEditing()
+        let selection = selectedIndexes
+        let primarySelection = primarySelectedIndex
+        cancelInFlightInteraction()
+        discardPotentialConfirmDoubleClick()
+        recordUndo()
+        let delta = NSPoint(x: -sourceRect.minX, y: -sourceRect.minY)
+        let originalBounds = bounds
+        annotations = annotations.map { annotation in
+            if let magnifier = annotation as? MagnifierAnnotation {
+                return magnifier.translatedForCrop(by: delta, originalCanvasBounds: originalBounds)
+            }
+            return annotation.translated(by: delta)
+        }
+        previewImage = cropped
+        frameRotation = 0
+        setFrameSize(cropped.size)
+        setBoundsSize(cropped.size)
+        setPresentationScale(presentationScale)
+        setSelectedIndexes(selection, primary: primarySelection)
+        onImageRotationChanged?()
+        needsDisplay = true
+        refreshCursorAtCurrentLocation()
+        return true
+    }
+
     func updateViewportSize(_ size: NSSize) {
         guard !hasPreviewImage else { return }
         frameRotation = 0
@@ -2149,7 +2200,9 @@ class EditCanvasView: NSView {
                 annotations: translatedAnnotations(snapshot.annotations),
                 numberCounter: snapshot.numberCounter,
                 imageRotation: snapshot.imageRotation,
-                spotlightBackgroundBrightness: snapshot.spotlightBackgroundBrightness
+                spotlightBackgroundBrightness: snapshot.spotlightBackgroundBrightness,
+                previewImage: snapshot.previewImage,
+                canvasSize: snapshot.canvasSize
             )
         }
 

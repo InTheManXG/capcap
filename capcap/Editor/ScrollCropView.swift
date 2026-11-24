@@ -1,12 +1,7 @@
 import AppKit
 
-/// Crop overlay shown after a long-screenshot scroll capture. The whole
-/// stitched image is scaled to fit on screen so the user sees all of it at
-/// once; only the top and bottom edges move — the width is fixed.
-///
-/// At fit scale a long screenshot shrinks to a thin sliver, so dragging an
-/// edge pops a full-width preview at the cut line, letting the user place it
-/// exactly without losing horizontal context.
+/// 从长截图编辑器打开的全屏裁剪页，整图缩放显示，仅调整上下边缘
+/// 拖动时用原宽度预览裁切位置，避免长图缩小后难以判断细节
 final class ScrollCropView: NSView {
     private let image: NSImage
     private let cgImage: CGImage?
@@ -57,9 +52,11 @@ final class ScrollCropView: NSView {
 
     // MARK: - Result
 
-    /// The stitched image cropped to the current top/bottom selection.
-    func croppedImage() -> NSImage {
-        guard imageFrame.height > 0, let cg = cgImage else { return image }
+    /// 与底图像素对齐后转为左下原点，供编辑器平移独立标注和保存撤销记录
+    var cropRect: NSRect {
+        guard imageFrame.height > 0, let cg = cgImage else {
+            return NSRect(origin: .zero, size: image.size)
+        }
 
         let topFraction = max(0, (cropTop - imageFrame.minY) / imageFrame.height)
         let bottomFraction = min(1, (cropBottom - imageFrame.minY) / imageFrame.height)
@@ -68,18 +65,12 @@ final class ScrollCropView: NSView {
         let pxBottom = (bottomFraction * CGFloat(cg.height)).rounded()
         let pxHeight = max(1, pxBottom - pxTop)
 
-        // CGImage has a top-left origin, so the crop is a full-width band.
-        let band = CGRect(x: 0, y: pxTop, width: CGFloat(cg.width), height: pxHeight)
-        guard let cropped = cg.cropping(to: band) else { return image }
-
-        let scaleX = CGFloat(cg.width) / max(image.size.width, 1)
         let scaleY = CGFloat(cg.height) / max(image.size.height, 1)
-        return NSImage(
-            cgImage: cropped,
-            size: NSSize(
-                width: CGFloat(cropped.width) / scaleX,
-                height: CGFloat(cropped.height) / scaleY
-            )
+        return NSRect(
+            x: 0,
+            y: (CGFloat(cg.height) - pxBottom) / scaleY,
+            width: image.size.width,
+            height: pxHeight / scaleY
         )
     }
 

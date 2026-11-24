@@ -280,6 +280,7 @@
 "tipRedo" = "重做";
 "tipMoveSelection" = "移動選取範圍";
 "tipScrollCapture" = "長截圖";
+"tipCrop" = "圖片裁切";
 "tipRotate" = "旋轉";
 "tipRotateLeft" = "向左旋轉 90°";
 "tipRotateRight" = "向右旋轉 90°";
@@ -291,7 +292,7 @@
 "tipRecord" = "錄製";
 "tipCancel" = "取消";
 "tipConfirm" = "複製到剪貼簿";
-"tipScrollCropConfirm" = "儲存並編輯";
+"tipScrollCropConfirm" = "確認裁切";
 "copyQRCodeContent" = "複製二維碼內容";
 
 /* Beautify */
