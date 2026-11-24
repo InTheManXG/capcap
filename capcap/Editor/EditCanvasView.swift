@@ -68,6 +68,21 @@ class EditCanvasView: NSView {
     private(set) var presentationScale: CGFloat = 1
     var onImageRotationChanged: (() -> Void)?
 
+    /// 裁剪浮层接管鼠标时，底层画布不能继续覆盖它的光标或悬停效果
+    var isHoverTrackingEnabled = true {
+        didSet {
+            guard oldValue != isHoverTrackingEnabled else { return }
+            if !isHoverTrackingEnabled {
+                setHoveredAnnotationIndex(nil)
+                emojiPreviewPoint = nil
+                updateMarkerPreview(at: nil)
+                needsDisplay = true
+            }
+            updateTrackingAreas()
+            if isHoverTrackingEnabled { refreshCursorAtCurrentLocation() }
+        }
+    }
+
     var orientedDisplaySize: NSSize {
         imageRotation.orientedSize(NSSize(
             width: bounds.width * presentationScale,
@@ -3874,6 +3889,8 @@ class EditCanvasView: NSView {
         if let trackingArea {
             removeTrackingArea(trackingArea)
         }
+        trackingArea = nil
+        guard isHoverTrackingEnabled else { return }
         let area = NSTrackingArea(
             rect: bounds,
             options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
@@ -3885,6 +3902,7 @@ class EditCanvasView: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        guard isHoverTrackingEnabled else { return }
         let point = convert(event.locationInWindow, from: nil)
         updateHoverHighlight(at: point)
         updateEmojiPreview(at: point)
@@ -3893,6 +3911,7 @@ class EditCanvasView: NSView {
     }
 
     override func mouseEntered(with event: NSEvent) {
+        guard isHoverTrackingEnabled else { return }
         let point = convert(event.locationInWindow, from: nil)
         updateHoverHighlight(at: point)
         updateEmojiPreview(at: point)
@@ -3901,6 +3920,7 @@ class EditCanvasView: NSView {
     }
 
     override func mouseExited(with event: NSEvent) {
+        guard isHoverTrackingEnabled else { return }
         setHoveredAnnotationIndex(nil)
         if emojiPreviewPoint != nil {
             emojiPreviewPoint = nil
@@ -4013,6 +4033,7 @@ class EditCanvasView: NSView {
     }
 
     private func updateCursor(at point: NSPoint) {
+        guard isHoverTrackingEnabled else { return }
         // The outer screenshot frame stays resizable while an annotation tool
         // owns canvas tracking events. Preserve its eight directional cursors
         // before considering annotation-specific hover affordances.
@@ -4076,6 +4097,7 @@ class EditCanvasView: NSView {
     /// cursor. Used after operations that change what's draggable (undo,
     /// commit, tool change) so the cursor doesn't lie until the next move.
     private func refreshCursorAtCurrentLocation() {
+        guard isHoverTrackingEnabled else { return }
         guard let window else {
             updateMarkerPreview(at: nil)
             return

@@ -3478,6 +3478,7 @@ class EditWindowController {
         let hasPreview = canvasView?.hasPreviewImage == true
         let hasFixedImage = overrideBaseImage != nil
         let isBlocked = isScrollCaptureBusy || isCropping
+        canvasView?.isHoverTrackingEnabled = !isBlocked
         // Once the editor is up, the canvas owns clicks inside the selection
         // rect for the entire session — drawing tools, adjust-mode handles,
         // and dragging existing annotations all go through it. The legacy

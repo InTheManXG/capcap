@@ -21,6 +21,7 @@ final class FullScreenEditorLayoutTests: XCTestCase {
     @MainActor
     func testCroppingKeepsHandlesVisibleAndRestoresEditorAcrossDisplays() throws {
         _ = NSApplication.shared
+        let originalCursor = NSCursor.current
         let previousBeautify = Defaults.lastBeautifyEnabled
         let previousToolbarLayout = UserDefaults.standard.object(forKey: "editor.toolbarLayout")
         Defaults.lastBeautifyEnabled = false
@@ -28,6 +29,7 @@ final class FullScreenEditorLayoutTests: XCTestCase {
         defer {
             Defaults.lastBeautifyEnabled = previousBeautify
             UserDefaults.standard.set(previousToolbarLayout, forKey: "editor.toolbarLayout")
+            originalCursor.set()
         }
         XCTAssertFalse(NSScreen.screens.isEmpty)
         for screen in NSScreen.screens {
@@ -136,8 +138,48 @@ final class FullScreenEditorLayoutTests: XCTestCase {
                 XCTAssertTrue(firstCropView.visibleRect.insetBy(dx: -0.5, dy: -0.5).contains(handle),
                               "完整控制点应留在当前屏幕裁剪视口内")
             }
+            XCTAssertTrue(canvas.trackingAreas.isEmpty, "裁剪浮层应独占悬停追踪，底层画布不能抢回光标")
+            for (index, handle) in SelectionView.HandlePosition.allCases.enumerated() {
+                let rect = firstCropView.handleRects[index]
+                let location = firstCropView.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)
+                let moved = try XCTUnwrap(NSEvent.mouseEvent(
+                    with: .mouseMoved, location: location, modifierFlags: [], timestamp: 0,
+                    windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                    clickCount: 0, pressure: 0
+                ))
+                let entered = try XCTUnwrap(NSEvent.enterExitEvent(
+                    with: .mouseEntered, location: location, modifierFlags: [], timestamp: 0,
+                    windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                    trackingNumber: 0, userData: nil
+                ))
+                let exited = try XCTUnwrap(NSEvent.enterExitEvent(
+                    with: .mouseExited, location: location, modifierFlags: [], timestamp: 0,
+                    windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                    trackingNumber: 0, userData: nil
+                ))
+                let cursorUpdate = try XCTUnwrap(NSEvent.enterExitEvent(
+                    with: .cursorUpdate, location: location, modifierFlags: [], timestamp: 0,
+                    windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                    trackingNumber: 0, userData: nil
+                ))
+                for updatesCursorRect in [false, true] {
+                    NSCursor.arrow.set()
+                    if updatesCursorRect {
+                        firstCropView.cursorUpdate(with: cursorUpdate)
+                    } else {
+                        firstCropView.mouseMoved(with: moved)
+                    }
+                    // 即使停用前已排队的画布事件迟到，也不能覆盖裁剪控制点的方向光标
+                    canvas.mouseEntered(with: entered)
+                    canvas.mouseMoved(with: moved)
+                    canvas.mouseExited(with: exited)
+                    XCTAssertEqual(NSCursor.current, SelectionView.cursorForHandle(handle),
+                                   "\(handle) 的光标不能被底层画布的迟到悬停事件覆盖")
+                }
+            }
             XCTAssertTrue(controller.cancelCrop())
             XCTAssertNil(firstCropView.superview)
+            XCTAssertFalse(canvas.trackingAreas.isEmpty, "退出裁剪应恢复正常标注画布的悬停追踪")
             XCTAssertEqual(scroll.contentView.bounds.origin.x, originBeforeCrop.x, accuracy: 1)
             XCTAssertEqual(scroll.contentView.bounds.origin.y, originBeforeCrop.y, accuracy: 1,
                            "取消裁剪应恢复进入前的滚动位置")
