@@ -85,7 +85,7 @@ final class ScrollCropView: NSView {
         border.stroke()
         for handle in handleRects {
             let width = min(2, handle.width / 3)
-            let path = NSBezierPath(roundedRect: handle.insetBy(dx: width / 2, dy: width / 2), xRadius: 2, yRadius: 2)
+            let path = NSBezierPath(ovalIn: handle.insetBy(dx: width / 2, dy: width / 2))
             NSColor.white.setFill()
             path.fill()
             accent.setStroke()
