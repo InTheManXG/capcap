@@ -8,6 +8,7 @@ final class ScrollCropView: NSView {
         didSet {
             dragState = nil
             needsDisplay = true
+            refreshCursorGeometry()
         }
     }
     private var cropFractions = NSRect(x: 0, y: 0, width: 1, height: 1)
@@ -39,6 +40,25 @@ final class ScrollCropView: NSView {
         if imageFillsBounds { imageRect = bounds }
         dragState = nil
         needsDisplay = true
+        refreshCursorGeometry()
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        for (index, rect) in handleRects.enumerated() {
+            // 系统光标区只覆盖圆点本体，扩大命中区由最近圆点规则处理，避免小图区域重叠
+            let hitRect = rect.intersection(visibleRect)
+            guard !hitRect.isNull else { continue }
+            addCursorRect(hitRect, cursor: SelectionView.cursorForHandle(SelectionView.HandlePosition.allCases[index]))
+        }
+    }
+
+    private func refreshCursorGeometry() {
+        guard let window else { return }
+        window.invalidateCursorRects(for: self)
+        let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        guard window.isKeyWindow, visibleRect.contains(point) else { return }
+        updateCursor(at: point)
     }
 
     /// 比例不依赖显示缩放；四条边先对齐旋转后的实际像素，再返回逻辑坐标
@@ -131,10 +151,13 @@ final class ScrollCropView: NSView {
             height: (top - bottom) / imageRect.height
         )
         needsDisplay = true
+        window?.invalidateCursorRects(for: self)
+        updateCursor(at: point)
     }
 
     override func mouseUp(with event: NSEvent) {
         dragState = nil
+        updateCursor(at: convert(event.locationInWindow, from: nil))
     }
 
     private func handle(at point: NSPoint) -> SelectionView.HandlePosition? {
@@ -156,14 +179,27 @@ final class ScrollCropView: NSView {
         for area in trackingAreas { removeTrackingArea(area) }
         addTrackingArea(NSTrackingArea(
             rect: bounds,
-            options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect],
+            options: [.mouseMoved, .mouseEnteredAndExited, .cursorUpdate, .activeInKeyWindow, .inVisibleRect],
             owner: self,
             userInfo: nil
         ))
     }
 
     override func mouseMoved(with event: NSEvent) {
-        if let handle = handle(at: convert(event.locationInWindow, from: nil)) {
+        updateCursor(at: convert(event.locationInWindow, from: nil))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        updateCursor(at: convert(event.locationInWindow, from: nil))
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        // macOS 会在移动事件后重新应用光标，必须在此阶段保留圆点的缩放方向
+        updateCursor(at: convert(event.locationInWindow, from: nil))
+    }
+
+    private func updateCursor(at point: NSPoint) {
+        if let handle = dragState?.handle ?? handle(at: point) {
             SelectionView.setCursorForHandle(handle)
         } else {
             NSCursor.arrow.set()

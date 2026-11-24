@@ -4,6 +4,35 @@ import XCTest
 
 @MainActor
 final class ScrollCropViewTests: XCTestCase {
+    func testHoveringEachHandleUpdatesCursorBeforeMouseDown() throws {
+        _ = NSApplication.shared
+        let originalCursor = NSCursor.current
+        defer { originalCursor.set() }
+        let view = try makePaddedView(size: NSSize(width: 200, height: 400))
+        let window = makeWindow(for: view)
+        defer { window.orderOut(nil) }
+
+        for (index, handle) in SelectionView.HandlePosition.allCases.enumerated() {
+            let rect = view.handleRects[index]
+            for type in [NSEvent.EventType.mouseEntered, .cursorUpdate] {
+                let event = try XCTUnwrap(NSEvent.enterExitEvent(
+                    with: type,
+                    location: view.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil),
+                    modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+                    context: nil, eventNumber: 0, trackingNumber: 0, userData: nil
+                ))
+                NSCursor.arrow.set()
+                if type == .mouseEntered {
+                    view.mouseEntered(with: event)
+                } else {
+                    view.cursorUpdate(with: event)
+                }
+                XCTAssertEqual(NSCursor.current, SelectionView.cursorForHandle(handle),
+                               "悬停在 \(handle) 时不应等待点击才改变光标")
+            }
+        }
+    }
+
     func testCropUsesScreenshotGreenHandlesAndContinuousBorder() throws {
         let view = try makePaddedView(size: NSSize(width: 100, height: 200))
         let bitmap = try XCTUnwrap(NSBitmapImageRep(
