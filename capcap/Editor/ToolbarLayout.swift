@@ -58,11 +58,11 @@ extension ToolbarItemID {
         switch self {
         case .rectangle, .ellipse, .arrow, .line, .pen, .marker, .spotlight, .mosaic, .eraser, .magnifier, .numbered, .text, .emoji:
             return .toggleTool
-        case .scrollCapture, .rotate, .beautify, .qrCode:
+        case .scrollCapture, .crop, .rotate, .beautify, .qrCode:
             return .toggleAction
         case .moveSelection:
             return .dragHandle
-        case .insertImage, .colorPicker, .undo, .redo, .crop, .ocr, .screenshotTranslate, .save, .upload, .pin, .record, .close, .confirm:
+        case .insertImage, .colorPicker, .undo, .redo, .ocr, .screenshotTranslate, .save, .upload, .pin, .record, .close, .confirm:
             return .momentary
         }
     }

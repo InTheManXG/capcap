@@ -8,7 +8,7 @@ final class ToolbarLayoutTests: XCTestCase {
         let cropIndex = try XCTUnwrap(primary.firstIndex(of: .crop))
         XCTAssertEqual(primary[cropIndex + 1], .rotate)
         XCTAssertNil(ToolbarItemID.crop.editTool)
-        XCTAssertEqual(ToolbarItemID.crop.kind, .momentary)
+        XCTAssertEqual(ToolbarItemID.crop.kind, .toggleAction)
         XCTAssertNotNil(ToolbarItemID.crop.iconImage(pointSize: 16))
     }
 
