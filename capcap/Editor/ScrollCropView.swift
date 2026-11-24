@@ -4,12 +4,19 @@ import AppKit
 final class ScrollCropView: NSView {
     private let imageSize: NSSize
     private let pixelSize: NSSize
+    var imageRect: NSRect {
+        didSet {
+            dragState = nil
+            needsDisplay = true
+        }
+    }
     private var cropFractions = NSRect(x: 0, y: 0, width: 1, height: 1)
     private var dragState: (handle: SelectionView.HandlePosition, rect: NSRect, point: NSPoint)?
 
     private let handleHitInset: CGFloat = 10
 
-    init(frame frameRect: NSRect, image: NSImage, rotation: ImageRotation = .none) {
+    init(frame frameRect: NSRect, image: NSImage, rotation: ImageRotation = .none, imageRect: NSRect? = nil) {
+        self.imageRect = imageRect ?? NSRect(origin: .zero, size: frameRect.size)
         imageSize = rotation.orientedSize(image.size)
         if let cgImage = image.cgImagePreservingBacking() {
             pixelSize = rotation.orientedSize(NSSize(width: cgImage.width, height: cgImage.height))
@@ -27,7 +34,9 @@ final class ScrollCropView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func setFrameSize(_ newSize: NSSize) {
+        let imageFillsBounds = imageRect == bounds
         super.setFrameSize(newSize)
+        if imageFillsBounds { imageRect = bounds }
         dragState = nil
         needsDisplay = true
     }
@@ -50,36 +59,34 @@ final class ScrollCropView: NSView {
 
     private var selectionRect: NSRect {
         NSRect(
-            x: bounds.minX + cropFractions.minX * bounds.width,
-            y: bounds.minY + cropFractions.minY * bounds.height,
-            width: cropFractions.width * bounds.width,
-            height: cropFractions.height * bounds.height
+            x: imageRect.minX + cropFractions.minX * imageRect.width,
+            y: imageRect.minY + cropFractions.minY * imageRect.height,
+            width: cropFractions.width * imageRect.width,
+            height: cropFractions.height * imageRect.height
         )
     }
 
-    /// 手柄外框全部位于裁剪框内，避免边缘被滚动容器裁掉；顺序沿用选区的八点枚举
+    /// 控制点中心落在真实裁剪边界，外侧圆点由独立浮层承载，顺序沿用选区的八点枚举
     var handleRects: [NSRect] {
         let rect = selectionRect
         let size = max(0, min(SelectionView.selectionHandleSize, rect.width / 3, rect.height / 3))
-        let centers = SelectionView.handlePositions(for: rect.insetBy(dx: size / 2, dy: size / 2))
+        let centers = SelectionView.handlePositions(for: rect)
         return centers.map {
             NSRect(x: $0.x - size / 2, y: $0.y - size / 2, width: size, height: size)
         }
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard bounds.width > 0, bounds.height > 0,
+        guard imageRect.width > 0, imageRect.height > 0,
               let context = NSGraphicsContext.current?.cgContext else { return }
         let rect = selectionRect
-        let mask = NSBezierPath(rect: bounds)
+        let mask = NSBezierPath(rect: imageRect)
         mask.append(NSBezierPath(rect: rect))
         mask.windingRule = .evenOdd
         NSColor(white: 0, alpha: 0.62).setFill()
         mask.fill()
 
-        // 沿用截图选区的实心圆点；边框内缩，避免滚动容器裁掉实线
-        let inset = min(1, rect.width / 2, rect.height / 2)
-        SelectionView.drawSelectionBorder(context: context, rect: rect.insetBy(dx: inset, dy: inset), dashed: false)
+        SelectionView.drawSelectionBorder(context: context, rect: rect, dashed: false)
         SelectionView.drawSelectionHandles(context: context, rects: handleRects)
     }
 
@@ -91,37 +98,37 @@ final class ScrollCropView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard let dragState, bounds.width > 0, bounds.height > 0 else { return }
+        guard let dragState, imageRect.width > 0, imageRect.height > 0 else { return }
         _ = autoscroll(with: event)
         let point = convert(event.locationInWindow, from: nil)
         let delta = NSPoint(x: point.x - dragState.point.x, y: point.y - dragState.point.y)
         let original = dragState.rect
-        // 内缩手柄只影响命中位置，边界始终从原框加鼠标位移，首次拖动不会跳边
-        let minimumWidth = min(original.width, bounds.width, max(12, bounds.width / max(1, pixelSize.width)))
-        let minimumHeight = min(original.height, bounds.height, max(12, bounds.height / max(1, pixelSize.height)))
+        // 从原框加鼠标位移，命中圆点边缘时首次拖动也不会跳边
+        let minimumWidth = min(original.width, imageRect.width, max(12, imageRect.width / max(1, pixelSize.width)))
+        let minimumHeight = min(original.height, imageRect.height, max(12, imageRect.height / max(1, pixelSize.height)))
         var left = original.minX, right = original.maxX
         var bottom = original.minY, top = original.maxY
         switch dragState.handle {
         case .topLeft, .bottomLeft, .leftCenter:
-            left = max(bounds.minX, min(original.maxX - minimumWidth, original.minX + delta.x))
+            left = max(imageRect.minX, min(original.maxX - minimumWidth, original.minX + delta.x))
         case .topRight, .bottomRight, .rightCenter:
-            right = min(bounds.maxX, max(original.minX + minimumWidth, original.maxX + delta.x))
+            right = min(imageRect.maxX, max(original.minX + minimumWidth, original.maxX + delta.x))
         default:
             break
         }
         switch dragState.handle {
         case .bottomLeft, .bottomRight, .bottomCenter:
-            bottom = max(bounds.minY, min(original.maxY - minimumHeight, original.minY + delta.y))
+            bottom = max(imageRect.minY, min(original.maxY - minimumHeight, original.minY + delta.y))
         case .topLeft, .topRight, .topCenter:
-            top = min(bounds.maxY, max(original.minY + minimumHeight, original.maxY + delta.y))
+            top = min(imageRect.maxY, max(original.minY + minimumHeight, original.maxY + delta.y))
         default:
             break
         }
         cropFractions = NSRect(
-            x: (left - bounds.minX) / bounds.width,
-            y: (bottom - bounds.minY) / bounds.height,
-            width: (right - left) / bounds.width,
-            height: (top - bottom) / bounds.height
+            x: (left - imageRect.minX) / imageRect.width,
+            y: (bottom - imageRect.minY) / imageRect.height,
+            width: (right - left) / imageRect.width,
+            height: (top - bottom) / imageRect.height
         )
         needsDisplay = true
     }

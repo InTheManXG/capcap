@@ -5,9 +5,9 @@ import XCTest
 @MainActor
 final class ScrollCropViewTests: XCTestCase {
     func testCropUsesScreenshotGreenHandlesAndContinuousBorder() throws {
-        let view = ScrollCropView(frame: NSRect(x: 0, y: 0, width: 100, height: 200), image: try makeImage())
+        let view = try makePaddedView(size: NSSize(width: 100, height: 200))
         let bitmap = try XCTUnwrap(NSBitmapImageRep(
-            bitmapDataPlanes: nil, pixelsWide: 100, pixelsHigh: 200,
+            bitmapDataPlanes: nil, pixelsWide: 124, pixelsHigh: 224,
             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
             isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
         ))
@@ -15,20 +15,23 @@ final class ScrollCropViewTests: XCTestCase {
         NSGraphicsContext.saveGraphicsState()
         defer { NSGraphicsContext.restoreGraphicsState() }
         NSGraphicsContext.current = graphics
+        graphics.cgContext.clear(view.bounds)
         view.draw(view.bounds)
         graphics.flushGraphics()
 
         let green = try XCTUnwrap(SelectionView.selectionColor.usingColorSpace(.deviceRGB))
         // 连续取边框上的像素可区分实线与虚线，同时确认控制点不再有白色圆心
-        let points = (20..<40).map { NSPoint(x: $0, y: 1) }
+        let points = (32..<52).map { NSPoint(x: $0, y: 12) }
             + view.handleRects.map { NSPoint(x: $0.midX, y: $0.midY) }
         for point in points {
-            let color = try XCTUnwrap(bitmap.colorAt(x: Int(point.x), y: 199 - Int(point.y))?.usingColorSpace(.deviceRGB))
+            let color = try XCTUnwrap(bitmap.colorAt(x: Int(point.x), y: 223 - Int(point.y))?.usingColorSpace(.deviceRGB))
             XCTAssertEqual(color.redComponent, green.redComponent, accuracy: 0.02)
             XCTAssertEqual(color.greenComponent, green.greenComponent, accuracy: 0.02)
             XCTAssertEqual(color.blueComponent, green.blueComponent, accuracy: 0.02)
             XCTAssertGreaterThan(color.alphaComponent, 0.98)
         }
+        let outsideImage = try XCTUnwrap(bitmap.colorAt(x: 4, y: 100))
+        XCTAssertEqual(outsideImage.alphaComponent, 0, accuracy: 0.001)
     }
 
     func testEveryHandleResizesItsOwnEdgesWithoutInitialJump() throws {
@@ -44,7 +47,7 @@ final class ScrollCropViewTests: XCTestCase {
             (.rightCenter, NSPoint(x: -20, y: 0), NSRect(x: 0, y: 0, width: 90, height: 200)),
         ]
         for (handle, delta, expected) in cases {
-            let view = ScrollCropView(frame: NSRect(x: 0, y: 0, width: 200, height: 400), image: try makeImage())
+            let view = try makePaddedView(size: NSSize(width: 200, height: 400))
             let window = makeWindow(for: view)
             defer { window.orderOut(nil) }
             try drag(handle, on: view, by: delta, window: window)
@@ -54,7 +57,7 @@ final class ScrollCropViewTests: XCTestCase {
 
     func testFourEdgesAlignToRetinaSourcePixels() throws {
         _ = NSApplication.shared
-        let view = ScrollCropView(frame: NSRect(x: 0, y: 0, width: 100, height: 200), image: try makeImage())
+        let view = try makePaddedView(size: NSSize(width: 100, height: 200))
         let window = makeWindow(for: view)
         defer { window.orderOut(nil) }
         XCTAssertFalse(view.isOpaque)
@@ -66,18 +69,20 @@ final class ScrollCropViewTests: XCTestCase {
         assertRect(view.cropRect, equals: NSRect(x: 5.5, y: 9.5, width: 87, height: 179))
     }
 
-    func testAllEightHandlesStayCompletelyInsideSelectionAndTinyOverlay() throws {
+    func testAllEightHandleCentersStayOnSelectionBoundaryAndInsideOverlay() throws {
         _ = NSApplication.shared
-        let view = ScrollCropView(frame: NSRect(x: 0, y: 0, width: 200, height: 400), image: try makeImage())
+        let view = try makePaddedView(size: NSSize(width: 200, height: 400))
         let window = makeWindow(for: view)
         defer { window.orderOut(nil) }
         XCTAssertEqual(view.handleRects.count, 8)
-        assertHandles(in: view.bounds, view: view)
+        assertHandles(on: view.imageRect, view: view)
+        XCTAssertLessThan(view.handleRects[0].minX, view.imageRect.minX)
+        XCTAssertGreaterThan(view.handleRects[0].maxY, view.imageRect.maxY)
         try drag(.bottomLeft, on: view, by: NSPoint(x: 20, y: 30), window: window)
-        assertHandles(in: NSRect(x: 20, y: 30, width: 180, height: 370), view: view)
+        assertHandles(on: NSRect(x: 32, y: 42, width: 180, height: 370), view: view)
 
-        view.setFrameSize(NSSize(width: 1, height: 2))
-        assertHandles(in: NSRect(x: 0.1, y: 0.15, width: 0.9, height: 1.85), view: view)
+        view.imageRect = NSRect(x: 12, y: 12, width: 1, height: 2)
+        assertHandles(on: NSRect(x: 12.1, y: 12.15, width: 0.9, height: 1.85), view: view)
         let unchanged = view.cropRect
         try drag(.topRight, on: view, by: .zero, window: window)
         assertRect(view.cropRect, equals: unchanged)
@@ -85,8 +90,7 @@ final class ScrollCropViewTests: XCTestCase {
 
     func testRotatedCropPreservesBothAxesWhenOverlayResizes() throws {
         _ = NSApplication.shared
-        let view = ScrollCropView(frame: NSRect(x: 0, y: 0, width: 400, height: 200),
-                                  image: try makeImage(), rotation: .left)
+        let view = try makePaddedView(size: NSSize(width: 400, height: 200), rotation: .left)
         let window = makeWindow(for: view)
         defer { window.orderOut(nil) }
         assertRect(view.cropRect, equals: NSRect(x: 0, y: 0, width: 200, height: 100))
@@ -96,7 +100,24 @@ final class ScrollCropViewTests: XCTestCase {
         let crop = view.cropRect
         view.setFrameSize(NSSize(width: 200, height: 400))
         assertRect(view.cropRect, equals: crop)
-        assertHandles(in: view.bounds, view: view)
+        XCTAssertEqual(view.imageRect, NSRect(x: 12, y: 12, width: 400, height: 200))
+        view.imageRect = NSRect(x: 12, y: 12, width: 176, height: 376)
+        assertRect(view.cropRect, equals: crop)
+        assertHandles(on: NSRect(x: 34.572, y: 59.564, width: 131.736, height: 284.632), view: view)
+    }
+
+    func testDefaultImageRectTracksOverlayResizeWithoutChangingCrop() throws {
+        _ = NSApplication.shared
+        let view = ScrollCropView(frame: NSRect(x: 0, y: 0, width: 100, height: 200), image: try makeImage())
+        let window = makeWindow(for: view)
+        defer { window.orderOut(nil) }
+        try drag(.bottomLeft, on: view, by: NSPoint(x: 10, y: 20), window: window)
+        let crop = view.cropRect
+
+        view.setFrameSize(NSSize(width: 200, height: 400))
+
+        XCTAssertEqual(view.imageRect, view.bounds)
+        assertRect(view.cropRect, equals: crop)
     }
 
     func testCornersCannotInvertOrEscapeImageBounds() throws {
@@ -108,7 +129,7 @@ final class ScrollCropViewTests: XCTestCase {
             (.bottomRight, NSPoint(x: -1_000, y: 1_000)),
         ]
         for (handle, delta) in cases {
-            let view = ScrollCropView(frame: NSRect(x: 0, y: 0, width: 100, height: 200), image: try makeImage())
+            let view = try makePaddedView(size: NSSize(width: 100, height: 200))
             let window = makeWindow(for: view)
             defer { window.orderOut(nil) }
             try drag(handle, on: view, by: delta, window: window)
@@ -118,21 +139,32 @@ final class ScrollCropViewTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(view.cropRect.minY, 0)
             XCTAssertLessThanOrEqual(view.cropRect.maxX, 100)
             XCTAssertLessThanOrEqual(view.cropRect.maxY, 200)
-            assertHandles(in: view.bounds, view: view)
+            for rect in view.handleRects {
+                XCTAssertTrue(view.bounds.contains(rect))
+            }
         }
     }
 
-    private func assertHandles(in rect: NSRect, view: ScrollCropView,
+    private func assertHandles(on rect: NSRect, view: ScrollCropView,
                                file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertEqual(view.handleRects.count, 8, file: file, line: line)
-        for handle in view.handleRects {
+        let centers = SelectionView.handlePositions(for: rect)
+        for (index, handle) in view.handleRects.enumerated() {
             XCTAssertGreaterThan(handle.width, 0, file: file, line: line)
             XCTAssertGreaterThan(handle.height, 0, file: file, line: line)
-            XCTAssertGreaterThanOrEqual(handle.minX, rect.minX - 0.0001, file: file, line: line)
-            XCTAssertGreaterThanOrEqual(handle.minY, rect.minY - 0.0001, file: file, line: line)
-            XCTAssertLessThanOrEqual(handle.maxX, rect.maxX + 0.0001, file: file, line: line)
-            XCTAssertLessThanOrEqual(handle.maxY, rect.maxY + 0.0001, file: file, line: line)
+            XCTAssertEqual(handle.midX, centers[index].x, accuracy: 0.0001, file: file, line: line)
+            XCTAssertEqual(handle.midY, centers[index].y, accuracy: 0.0001, file: file, line: line)
+            XCTAssertTrue(view.bounds.insetBy(dx: -0.0001, dy: -0.0001).contains(handle), file: file, line: line)
         }
+    }
+
+    private func makePaddedView(size: NSSize, rotation: ImageRotation = .none) throws -> ScrollCropView {
+        ScrollCropView(
+            frame: NSRect(x: 0, y: 0, width: size.width + 24, height: size.height + 24),
+            image: try makeImage(),
+            rotation: rotation,
+            imageRect: NSRect(x: 12, y: 12, width: size.width, height: size.height)
+        )
     }
 
     private func assertRect(_ actual: NSRect, equals expected: NSRect,

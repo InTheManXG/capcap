@@ -1692,9 +1692,6 @@ class EditWindowController {
             for: canvasView.imageRotation.orientedSize(image.size)
         )
 
-        if let cropView = scrollCropView {
-            cropView.frame = canvasView.convert(canvasView.bounds, to: container)
-        }
         updateCanvasScrollAvailability()
         if let scrollOrigin {
             let clipView = scrollView.contentView
@@ -1704,6 +1701,11 @@ class EditWindowController {
             scrollView.reflectScrolledClipView(clipView)
         } else {
             resetCanvasScrollPosition()
+        }
+        if let cropView = scrollCropView {
+            // 选区层放在滚动视口外，圆点可跨过图像边缘且不被视口裁掉
+            cropView.frame = hostSelectionView.bounds
+            cropView.imageRect = canvasView.convert(canvasView.bounds, to: hostSelectionView)
         }
         updateEditorInteractionState()
         updateCaptureActionAvailability()
@@ -2391,7 +2393,7 @@ class EditWindowController {
     private func enterCropMode() {
         guard !isScrollCaptureBusy, !isCropping,
               let canvasView, let image = canvasView.previewImage,
-              let container = beautifyContainerView else { return }
+              let hostSelectionView, let scrollView = canvasScrollView else { return }
         canvasView.commitActiveTextEditing()
 
         selectTool(.none)
@@ -2402,11 +2404,13 @@ class EditWindowController {
         layoutFullScreenImageEditor()
 
         let cropView = ScrollCropView(
-            frame: canvasView.convert(canvasView.bounds, to: container),
+            frame: hostSelectionView.bounds,
             image: image,
-            rotation: canvasView.imageRotation
+            rotation: canvasView.imageRotation,
+            imageRect: canvasView.convert(canvasView.bounds, to: hostSelectionView)
         )
-        container.addSubview(cropView)
+        // 覆盖图片但位于工具栏下方，保持裁剪操作按钮可点击
+        hostSelectionView.addSubview(cropView, positioned: .above, relativeTo: scrollView)
         scrollCropView = cropView
 
         showCropControl()
@@ -2430,7 +2434,7 @@ class EditWindowController {
             isCropping = true
             scrollCropView = cropView
             layoutFullScreenImageEditor()
-            beautifyContainerView?.addSubview(cropView)
+            hostSelectionView?.addSubview(cropView, positioned: .above, relativeTo: canvasScrollView)
             return false
         }
         exitCropMode(restoringScrollPosition: false)

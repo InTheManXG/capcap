@@ -115,7 +115,23 @@ final class FullScreenEditorLayoutTests: XCTestCase {
                 $0.hoverTip == L10n.tipCrop
             })
             cropButton.performClick(nil)
-            let firstCropView = try XCTUnwrap(container.subviews.compactMap { $0 as? ScrollCropView }.first)
+            let firstCropView = try XCTUnwrap(host.subviews.compactMap { $0 as? ScrollCropView }.first)
+            let imageRect = canvas.convert(canvas.bounds, to: host)
+            // AppKit 会把滚动视口吸附到实际屏幕像素，允许半个逻辑点以内的显示取整
+            XCTAssertEqual(firstCropView.imageRect.minX, imageRect.minX, accuracy: 0.5)
+            XCTAssertEqual(firstCropView.imageRect.minY, imageRect.minY, accuracy: 0.5)
+            XCTAssertEqual(firstCropView.imageRect.width, imageRect.width, accuracy: 0.5)
+            XCTAssertEqual(firstCropView.imageRect.height, imageRect.height, accuracy: 0.5)
+            let overlayIndex = try XCTUnwrap(host.subviews.firstIndex { $0 === firstCropView })
+            XCTAssertGreaterThan(overlayIndex, scrollIndex)
+            for toolbar in toolbars {
+                XCTAssertLessThan(overlayIndex, try XCTUnwrap(host.subviews.firstIndex { $0 === toolbar }))
+            }
+            let positions = SelectionView.handlePositions(for: firstCropView.imageRect)
+            for (handle, position) in zip(firstCropView.handleRects, positions) {
+                XCTAssertEqual(handle.midX, position.x, accuracy: 0.001)
+                XCTAssertEqual(handle.midY, position.y, accuracy: 0.001)
+            }
             for handle in firstCropView.handleRects {
                 XCTAssertTrue(firstCropView.visibleRect.insetBy(dx: -0.5, dy: -0.5).contains(handle),
                               "完整控制点应留在当前屏幕裁剪视口内")
@@ -129,7 +145,7 @@ final class FullScreenEditorLayoutTests: XCTestCase {
             XCTAssertTrue(canvas.insertEmoji("🎯"))
             let annotationBeforeCrop = try XCTUnwrap(canvas.selectedAnnotation as? EmojiAnnotation)
             cropButton.performClick(nil)
-            let cropView = try XCTUnwrap(container.subviews.compactMap { $0 as? ScrollCropView }.first)
+            let cropView = try XCTUnwrap(host.subviews.compactMap { $0 as? ScrollCropView }.first)
             for handle in cropView.handleRects {
                 XCTAssertTrue(cropView.visibleRect.insetBy(dx: -0.5, dy: -0.5).contains(handle))
             }
@@ -142,8 +158,8 @@ final class FullScreenEditorLayoutTests: XCTestCase {
                 let index = try XCTUnwrap(SelectionView.HandlePosition.allCases.firstIndex(of: handle))
                 let rect = cropView.handleRects[index]
                 let start = NSPoint(x: rect.midX, y: rect.midY)
-                let end = NSPoint(x: start.x + cropView.bounds.width * fraction.x,
-                                  y: start.y + cropView.bounds.height * fraction.y)
+                let end = NSPoint(x: start.x + cropView.imageRect.width * fraction.x,
+                                  y: start.y + cropView.imageRect.height * fraction.y)
                 drag(cropView, from: start, to: end, window: window)
             }
             let expectedCrop = cropView.cropRect
